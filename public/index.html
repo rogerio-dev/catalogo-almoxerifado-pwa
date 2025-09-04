@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2196F3">
+    <title>Catálogo Almoxerifado</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Catálogo Almoxerifado">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="/styles.css">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header id="header">
+            <button id="backBtn" class="back-btn" style="display: none;">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h1 id="headerTitle">Catálogo Almoxerifado</h1>
+            <button id="addBtn" class="add-btn">
+                <i class="fas fa-plus"></i>
+            </button>
+        </header>
+
+        <!-- Main Content -->
+        <main id="mainContent">
+            <!-- Loading -->
+            <div id="loading" class="loading">
+                <div class="loader"></div>
+                <p>Carregando...</p>
+            </div>
+
+            <!-- Content Area -->
+            <div id="content" class="content">
+                <!-- Dynamic content will be loaded here -->
+            </div>
+        </main>
+
+        <!-- Password Modal -->
+        <div id="passwordModal" class="modal">
+            <div class="modal-content">
+                <h3>Senha Requerida</h3>
+                <input type="password" id="passwordInput" placeholder="Digite a senha" />
+                <div class="modal-actions">
+                    <button id="cancelPasswordBtn" class="btn-secondary">Cancelar</button>
+                    <button id="confirmPasswordBtn" class="btn-primary">Confirmar</button>
+                </div>
+                <div id="passwordError" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Modal -->
+        <div id="addEditModal" class="modal">
+            <div class="modal-content">
+                <h3 id="modalTitle">Adicionar</h3>
+                <form id="addEditForm">
+                    <input type="text" id="nameInput" placeholder="Nome" required />
+                    <div id="imageUploadSection" style="display: none;">
+                        <label for="imageInput" class="file-label">
+                            <i class="fas fa-image"></i>
+                            Selecionar Imagem
+                        </label>
+                        <input type="file" id="imageInput" accept="image/*" />
+                        <div id="imagePreview"></div>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" id="cancelFormBtn" class="btn-secondary">Cancelar</button>
+                        <button type="submit" id="submitFormBtn" class="btn-primary">Salvar</button>
+                    </div>
+                </form>
+                <div id="formError" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Context Menu -->
+        <div id="contextMenu" class="context-menu">
+            <button id="editOption" class="context-option">
+                <i class="fas fa-edit"></i>
+                Editar
+            </button>
+            <button id="deleteOption" class="context-option delete">
+                <i class="fas fa-trash"></i>
+                Excluir
+            </button>
+        </div>
+
+        <!-- Toast -->
+        <div id="toast" class="toast"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/app.js"></script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
