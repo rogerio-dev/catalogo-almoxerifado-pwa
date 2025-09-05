@@ -1,12 +1,11 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
-const sqlite3 = require('sqlite3').verbose();
 const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const fs = require('fs');
+const { connect, testConnection, query, initializeTables, closeConnection, isProduction } = require('./db');
 require('dotenv').config();
 
 const app = express();
@@ -30,90 +29,25 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Configuração do banco de dados
-const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
-
-console.log('=== DETECÇÃO DE AMBIENTE ===');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
-console.log('MYSQLHOST presente:', !!process.env.MYSQLHOST);
-console.log('MYSQLDATABASE presente:', !!process.env.MYSQLDATABASE);
-console.log('MYSQLUSER presente:', !!process.env.MYSQLUSER);
-console.log('MYSQLPASSWORD presente:', !!process.env.MYSQLPASSWORD);
-console.log('MYSQLPORT presente:', !!process.env.MYSQLPORT);
-console.log('isProduction:', isProduction);
-console.log('=== FIM AMBIENTE ===');
-
-let pool;
-let db; // SQLite database
-
-if (isProduction) {
-  console.log('=== CONFIGURAÇÃO MYSQL ===');
-  
-  // Configuração usando variáveis individuais do Railway
-  const mysqlConfig = {
-    host: process.env.MYSQLHOST,
-    user: process.env.MYSQLUSER,
-    password: process.env.MYSQLPASSWORD,
-    database: process.env.MYSQLDATABASE,
-    port: parseInt(process.env.MYSQLPORT) || 3306,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    acquireTimeout: 60000,
-    timeout: 60000,
-    reconnect: true,
-    charset: 'utf8mb4'
-  };
-
-  console.log('🐬 Configuração MySQL:');
-  console.log('Host:', mysqlConfig.host);
-  console.log('Database:', mysqlConfig.database);
-  console.log('User:', mysqlConfig.user);
-  console.log('Port:', mysqlConfig.port);
-  
-  if (mysqlConfig.host && mysqlConfig.user && mysqlConfig.password && mysqlConfig.database) {
-    // Criar pool com configuração individual
-    pool = mysql.createPool(mysqlConfig);
-    console.log('✅ Pool MySQL criado com variáveis individuais');
-  } else if (process.env.MYSQL_URL) {
-    // Fallback para MYSQL_URL se as variáveis individuais não estiverem disponíveis
-    console.log('🔄 Usando MYSQL_URL como fallback');
-    pool = mysql.createPool(process.env.MYSQL_URL);
-    console.log('✅ Pool MySQL criado com URL');
-  } else {
-    console.error('❌ Variáveis MySQL não encontradas!');
-    console.error('Necessário: MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE');
-    process.exit(1);
-  }
-} else {
-  // SQLite para desenvolvimento
-  db = new sqlite3.Database('./database.sqlite', (err) => {
-    if (err) {
-      console.error('Erro ao conectar com SQLite:', err);
-    } else {
-      console.log('Conectado ao SQLite');
-    }
-  });
-}
-
-// Inicializar conexão com banco
+// Inicializar conexão com banco de dados
 async function initializeDatabase() {
   try {
-    if (isProduction) {
-      // MySQL - testar conexão
-      console.log('🔄 Tentando conectar ao MySQL...');
-      const connection = await pool.getConnection();
-      console.log('✅ Conectado ao MySQL com sucesso!');
-      await createMySQLTables(connection);
-      connection.release();
-      console.log('✅ Tabelas MySQL criadas/verificadas');
-    } else {
-      // SQLite
-      await createSQLiteTables();
+    console.log('🔄 Inicializando sistema de banco de dados...');
+    
+    // Testar conexão
+    const connectionOk = await testConnection();
+    if (!connectionOk) {
+      throw new Error('Falha no teste de conexão');
     }
+    
+    // Inicializar tabelas
+    await initializeTables();
+    
+    console.log('✅ Sistema de banco de dados inicializado com sucesso!');
+    console.log(`� Ambiente: ${isProduction ? 'Produção (MySQL)' : 'Desenvolvimento (SQLite)'}`);
+    
   } catch (error) {
-    console.error('❌ ERRO AO CONECTAR COM O BANCO:', error);
+    console.error('❌ ERRO AO INICIALIZAR BANCO DE DADOS:', error);
     console.error('Detalhes do erro:', error.message);
     
     if (isProduction) {
@@ -121,119 +55,9 @@ async function initializeDatabase() {
       setTimeout(() => {
         initializeDatabase();
       }, 5000);
+    } else {
+      process.exit(1);
     }
-  }
-}
-
-// Criar tabelas MySQL
-async function createMySQLTables(connection) {
-  const tables = [
-    `CREATE TABLE IF NOT EXISTS categorias (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      nome VARCHAR(255) NOT NULL UNIQUE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )`,
-    
-    `CREATE TABLE IF NOT EXISTS subcategorias (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      nome VARCHAR(255) NOT NULL,
-      categoria_id INT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE CASCADE,
-      UNIQUE KEY unique_subcategoria (nome, categoria_id)
-    )`,
-    
-    `CREATE TABLE IF NOT EXISTS itens (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      nome VARCHAR(255) NOT NULL,
-      imagem VARCHAR(500),
-      subcategoria_id INT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (subcategoria_id) REFERENCES subcategorias(id) ON DELETE CASCADE,
-      UNIQUE KEY unique_item (nome, subcategoria_id)
-    )`
-  ];
-
-  for (const table of tables) {
-    await connection.execute(table);
-  }
-  console.log('Tabelas MySQL criadas/verificadas com sucesso');
-}
-
-// Criar tabelas SQLite
-async function createSQLiteTables() {
-  return new Promise((resolve, reject) => {
-    const tables = [
-      `CREATE TABLE IF NOT EXISTS categorias (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL UNIQUE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`,
-      
-      `CREATE TABLE IF NOT EXISTS subcategorias (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        categoria_id INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE CASCADE,
-        UNIQUE(nome, categoria_id)
-      )`,
-      
-      `CREATE TABLE IF NOT EXISTS itens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        imagem TEXT,
-        subcategoria_id INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (subcategoria_id) REFERENCES subcategorias(id) ON DELETE CASCADE,
-        UNIQUE(nome, subcategoria_id)
-      )`
-    ];
-
-    let completed = 0;
-    tables.forEach(table => {
-      db.run(table, (err) => {
-        if (err) {
-          console.error('Erro ao criar tabela SQLite:', err);
-          reject(err);
-        } else {
-          completed++;
-          if (completed === tables.length) {
-            console.log('Tabelas SQLite criadas/verificadas com sucesso');
-            resolve();
-          }
-        }
-      });
-    });
-  });
-}
-
-// Funções de banco de dados
-function executeQuery(query, params = []) {
-  if (isProduction) {
-    // MySQL
-    return pool.execute(query, params);
-  } else {
-    // SQLite
-    return new Promise((resolve, reject) => {
-      if (query.toLowerCase().includes('select')) {
-        db.all(query, params, (err, rows) => {
-          if (err) reject(err);
-          else resolve([rows]);
-        });
-      } else {
-        db.run(query, params, function(err) {
-          if (err) reject(err);
-          else resolve([{ insertId: this.lastID, affectedRows: this.changes }]);
-        });
-      }
-    });
   }
 }
 
@@ -338,7 +162,7 @@ app.post('/api/verify-password', (req, res) => {
 // CATEGORIAS
 app.get('/api/categorias', async (req, res) => {
   try {
-    const [rows] = await executeQuery('SELECT * FROM categorias ORDER BY nome');
+    const rows = await query('SELECT * FROM categorias ORDER BY nome');
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar categorias' });
@@ -348,8 +172,8 @@ app.get('/api/categorias', async (req, res) => {
 app.post('/api/categorias', upload.none(), checkPasswordFormData, async (req, res) => {
   try {
     const { nome } = req.body;
-    const [result] = await executeQuery('INSERT INTO categorias (nome) VALUES (?)', [nome]);
-    res.json({ id: result.insertId, nome });
+    const result = await query('INSERT INTO categorias (nome) VALUES (?)', [nome]);
+    res.json({ id: result.insertId || result.lastID, nome });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
       res.status(400).json({ error: 'Categoria já existe' });
@@ -363,7 +187,7 @@ app.put('/api/categorias/:id', upload.none(), checkPasswordFormData, async (req,
   try {
     const { id } = req.params;
     const { nome } = req.body;
-    await executeQuery('UPDATE categorias SET nome = ? WHERE id = ?', [nome, id]);
+    await query('UPDATE categorias SET nome = ? WHERE id = ?', [nome, id]);
     res.json({ success: true });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
@@ -377,7 +201,7 @@ app.put('/api/categorias/:id', upload.none(), checkPasswordFormData, async (req,
 app.delete('/api/categorias/:id', checkPassword, async (req, res) => {
   try {
     const { id } = req.params;
-    await executeQuery('DELETE FROM categorias WHERE id = ?', [id]);
+    await query('DELETE FROM categorias WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao deletar categoria' });
@@ -388,7 +212,7 @@ app.delete('/api/categorias/:id', checkPassword, async (req, res) => {
 app.get('/api/subcategorias/:categoriaId', async (req, res) => {
   try {
     const { categoriaId } = req.params;
-    const [rows] = await executeQuery(
+    const rows = await query(
       'SELECT s.*, c.nome as categoria_nome FROM subcategorias s JOIN categorias c ON s.categoria_id = c.id WHERE s.categoria_id = ? ORDER BY s.nome', 
       [categoriaId]
     );
@@ -401,8 +225,8 @@ app.get('/api/subcategorias/:categoriaId', async (req, res) => {
 app.post('/api/subcategorias', upload.none(), checkPasswordFormData, async (req, res) => {
   try {
     const { nome, categoria_id } = req.body;
-    const [result] = await executeQuery('INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)', [nome, categoria_id]);
-    res.json({ id: result.insertId, nome, categoria_id });
+    const result = await query('INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)', [nome, categoria_id]);
+    res.json({ id: result.insertId || result.lastID, nome, categoria_id });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
       res.status(400).json({ error: 'Subcategoria já existe nesta categoria' });
@@ -416,7 +240,7 @@ app.put('/api/subcategorias/:id', upload.none(), checkPasswordFormData, async (r
   try {
     const { id } = req.params;
     const { nome } = req.body;
-    await executeQuery('UPDATE subcategorias SET nome = ? WHERE id = ?', [nome, id]);
+    await query('UPDATE subcategorias SET nome = ? WHERE id = ?', [nome, id]);
     res.json({ success: true });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
@@ -430,7 +254,7 @@ app.put('/api/subcategorias/:id', upload.none(), checkPasswordFormData, async (r
 app.delete('/api/subcategorias/:id', checkPassword, async (req, res) => {
   try {
     const { id } = req.params;
-    await executeQuery('DELETE FROM subcategorias WHERE id = ?', [id]);
+    await query('DELETE FROM subcategorias WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao deletar subcategoria' });
@@ -441,7 +265,7 @@ app.delete('/api/subcategorias/:id', checkPassword, async (req, res) => {
 app.get('/api/itens/:subcategoriaId', async (req, res) => {
   try {
     const { subcategoriaId } = req.params;
-    const [rows] = await executeQuery(
+    const rows = await query(
       `SELECT i.*, s.nome as subcategoria_nome, c.nome as categoria_nome 
        FROM itens i 
        JOIN subcategorias s ON i.subcategoria_id = s.id 
@@ -469,10 +293,10 @@ app.post('/api/itens', upload.single('imagem'), handleMulterError, checkPassword
     console.log('Subcategoria ID:', subcategoria_id);
     console.log('Imagem path:', imagem);
     
-    const [result] = await executeQuery('INSERT INTO itens (nome, imagem, subcategoria_id) VALUES (?, ?, ?)', [nome, imagem, subcategoria_id]);
+    const result = await query('INSERT INTO itens (nome, imagem, subcategoria_id) VALUES (?, ?, ?)', [nome, imagem, subcategoria_id]);
     
-    console.log('Item criado com sucesso, ID:', result.insertId);
-    res.json({ id: result.insertId, nome, imagem, subcategoria_id });
+    console.log('Item criado com sucesso, ID:', result.insertId || result.lastID);
+    res.json({ id: result.insertId || result.lastID, nome, imagem, subcategoria_id });
   } catch (error) {
     console.error('ERRO AO CRIAR ITEM:', error);
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
@@ -488,18 +312,18 @@ app.put('/api/itens/:id', upload.single('imagem'), checkPasswordFormData, async 
     const { id } = req.params;
     const { nome } = req.body;
     
-    let query = 'UPDATE itens SET nome = ?';
+    let queryStr = 'UPDATE itens SET nome = ?';
     let params = [nome];
     
     if (req.file) {
-      query += ', imagem = ?';
+      queryStr += ', imagem = ?';
       params.push(`/uploads/${req.file.filename}`);
     }
     
-    query += ' WHERE id = ?';
+    queryStr += ' WHERE id = ?';
     params.push(id);
     
-    await executeQuery(query, params);
+    await query(queryStr, params);
     res.json({ success: true });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
@@ -513,7 +337,7 @@ app.put('/api/itens/:id', upload.single('imagem'), checkPasswordFormData, async 
 app.delete('/api/itens/:id', checkPassword, async (req, res) => {
   try {
     const { id } = req.params;
-    await executeQuery('DELETE FROM itens WHERE id = ?', [id]);
+    await query('DELETE FROM itens WHERE id = ?', [id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao deletar item' });
@@ -529,8 +353,22 @@ app.get('/', (req, res) => {
 async function startServer() {
   await initializeDatabase();
   app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📊 Ambiente: ${isProduction ? 'Produção (MySQL)' : 'Desenvolvimento (SQLite)'}`);
   });
 }
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('🔄 Recebido SIGTERM, encerrando servidor...');
+  await closeConnection();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('🔄 Recebido SIGINT, encerrando servidor...');
+  await closeConnection();
+  process.exit(0);
+});
 
 startServer().catch(console.error);
