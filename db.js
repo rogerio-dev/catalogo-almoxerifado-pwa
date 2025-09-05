@@ -2,19 +2,8 @@ const mysql = require('mysql2/promise');
 const sqlite3 = require('sqlite3').verbose();
 require('dotenv').config();
 
-// Configuração do MySQL usando variáveis de ambiente do Railway
-const mysqlConfig = {
-    host: process.env.MYSQLHOST,
-    port: parseInt(process.env.MYSQLPORT) || 3306,
-    user: process.env.MYSQLUSER,
-    password: process.env.MYSQLPASSWORD,
-    database: process.env.MYSQLDATABASE,
-    connectionLimit: 10,
-    charset: 'utf8mb4'
-};
-
 // Verificar se estamos em produção
-const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
+const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST || process.env.MYSQL_HOST;
 
 let pool;
 let db; // SQLite database
@@ -23,39 +12,124 @@ async function connect() {
     try {
         if (isProduction) {
             if (!pool) {
-                console.log('=== CONFIGURAÇÃO MYSQL RAILWAY ===');
-                console.log('🔄 Conectando ao MySQL...');
+                console.log('=== CONFIGURAÇÃO MYSQL - MÚLTIPLAS ESTRATÉGIAS ===');
                 
-                // Priorizar MYSQL_PUBLIC_URL (TCP Proxy - mais confiável)
-                if (process.env.MYSQL_PUBLIC_URL) {
-                    console.log('🌐 Usando MYSQL_PUBLIC_URL (TCP Proxy)');
-                    const publicUrl = process.env.MYSQL_PUBLIC_URL;
-                    console.log('URL Proxy:', publicUrl.substring(0, 40) + '...');
-                    
-                    pool = mysql.createPool(publicUrl);
-                    console.log('✅ Pool MySQL criado com URL Pública (TCP Proxy)');
-                    
-                } else if (process.env.MYSQL_URL) {
-                    console.log('🔒 Usando MYSQL_URL (Private Network)');
-                    const privateUrl = process.env.MYSQL_URL;
-                    console.log('URL Privada:', privateUrl.substring(0, 40) + '...');
-                    
-                    pool = mysql.createPool(privateUrl);
-                    console.log('✅ Pool MySQL criado com URL Privada');
-                    
-                } else if (mysqlConfig.host && mysqlConfig.user && mysqlConfig.password && mysqlConfig.database) {
-                    console.log('🐬 Usando variáveis individuais');
-                    console.log('Host:', mysqlConfig.host);
-                    console.log('Database:', mysqlConfig.database);
-                    console.log('User:', mysqlConfig.user);
-                    console.log('Port:', mysqlConfig.port);
-                    
-                    pool = mysql.createPool(mysqlConfig);
-                    console.log('✅ Pool MySQL criado com variáveis individuais');
-                    
-                } else {
-                    throw new Error('Nenhuma configuração MySQL válida encontrada!');
+                // Debug das variáveis disponíveis
+                console.log('🔍 VARIÁVEIS DISPONÍVEIS:');
+                console.log('MYSQL_URL:', process.env.MYSQL_URL ? '[DEFINIDA]' : '[NÃO DEFINIDA]');
+                console.log('MYSQLHOST:', process.env.MYSQLHOST);
+                console.log('MYSQL_HOST:', process.env.MYSQL_HOST);
+                console.log('MYSQLPORT:', process.env.MYSQLPORT);
+                console.log('MYSQL_PORT:', process.env.MYSQL_PORT);
+                console.log('MYSQLUSER:', process.env.MYSQLUSER);
+                console.log('MYSQL_USER:', process.env.MYSQL_USER);
+                console.log('MYSQLDATABASE:', process.env.MYSQLDATABASE);
+                console.log('MYSQL_DATABASE:', process.env.MYSQL_DATABASE);
+                
+                // Estratégia 1: Tentar com MYSQL_URL (mais provável de funcionar)
+                if (process.env.MYSQL_URL && process.env.MYSQL_URL !== '${{{MYSQL_URL}}}') {
+                    console.log('\n🧪 ESTRATÉGIA 1: Usando MYSQL_URL');
+                    try {
+                        console.log('URL:', process.env.MYSQL_URL.replace(/:[^:@]+@/, ':***@'));
+                        pool = mysql.createPool(process.env.MYSQL_URL);
+                        
+                        // Testar a conexão
+                        const testConn = await pool.getConnection();
+                        await testConn.execute('SELECT 1');
+                        testConn.release();
+                        
+                        console.log('✅ SUCESSO com MYSQL_URL!');
+                        return pool;
+                    } catch (error) {
+                        console.log('❌ MYSQL_URL falhou:', error.message);
+                        if (pool) {
+                            await pool.end().catch(() => {});
+                            pool = null;
+                        }
+                    }
                 }
+                
+                // Estratégia 2: Construir URL TCP manualmente
+                const host = process.env.MYSQLHOST || process.env.MYSQL_HOST;
+                const port = process.env.MYSQLPORT || process.env.MYSQL_PORT || '3306';
+                const user = process.env.MYSQLUSER || process.env.MYSQL_USER;
+                const password = process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD;
+                const database = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE;
+                
+                if (host && user && password && database) {
+                    console.log('\n🧪 ESTRATÉGIA 2: Construindo URL TCP manualmente');
+                    try {
+                        // Verificar se é host interno e tentar convertê-lo para TCP Proxy
+                        let tcpHost = host;
+                        if (host.includes('.railway.internal')) {
+                            // Converter para TCP Proxy
+                            const serviceName = host.split('.')[0];
+                            tcpHost = `${serviceName}-production.up.railway.app`;
+                            console.log(`🔄 Convertendo host interno para TCP: ${host} -> ${tcpHost}`);
+                        }
+                        
+                        const tcpUrl = `mysql://${user}:${password}@${tcpHost}:${port}/${database}?ssl=false`;
+                        console.log('TCP URL:', tcpUrl.replace(password, '***'));
+                        
+                        pool = mysql.createPool(tcpUrl);
+                        
+                        // Testar a conexão
+                        const testConn = await pool.getConnection();
+                        await testConn.execute('SELECT 1');
+                        testConn.release();
+                        
+                        console.log('✅ SUCESSO com TCP Proxy manual!');
+                        return pool;
+                    } catch (error) {
+                        console.log('❌ TCP Proxy manual falhou:', error.message);
+                        if (pool) {
+                            await pool.end().catch(() => {});
+                            pool = null;
+                        }
+                    }
+                    
+                    // Estratégia 3: Tentar com configuração tradicional
+                    console.log('\n🧪 ESTRATÉGIA 3: Configuração tradicional');
+                    try {
+                        const config = {
+                            host: host,
+                            port: parseInt(port),
+                            user: user,
+                            password: password,
+                            database: database,
+                            connectionLimit: 10,
+                            acquireTimeout: 15000,
+                            timeout: 15000,
+                            reconnect: true,
+                            charset: 'utf8mb4'
+                        };
+                        
+                        console.log('Config:', {
+                            host: config.host,
+                            port: config.port,
+                            user: config.user,
+                            database: config.database
+                        });
+                        
+                        pool = mysql.createPool(config);
+                        
+                        // Testar a conexão
+                        const testConn = await pool.getConnection();
+                        await testConn.execute('SELECT 1');
+                        testConn.release();
+                        
+                        console.log('✅ SUCESSO com configuração tradicional!');
+                        return pool;
+                    } catch (error) {
+                        console.log('❌ Configuração tradicional falhou:', error.message);
+                        if (pool) {
+                            await pool.end().catch(() => {});
+                            pool = null;
+                        }
+                    }
+                }
+                
+                throw new Error('❌ TODAS AS ESTRATÉGIAS DE CONEXÃO MYSQL FALHARAM!');
             }
             return pool;
         } else {
