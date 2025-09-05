@@ -8,18 +8,9 @@ let pool;
 
 // Configuração MySQL baseada nas variáveis do Railway
 const getMySQLConfig = () => {
-    // Prioridade: tentar MYSQL_PUBLIC_URL primeiro (TCP Proxy)
-    if (process.env.MYSQL_PUBLIC_URL && !process.env.MYSQL_PUBLIC_URL.includes('${{')) {
-        console.log('🌐 Usando MYSQL_PUBLIC_URL (TCP Proxy)');
-        return {
-            type: 'url',
-            value: process.env.MYSQL_PUBLIC_URL
-        };
-    }
-    
-    // Alternativa: MYSQL_URL (rede privada)
+    // Usar MYSQL_URL diretamente (rede privada Railway)
     if (process.env.MYSQL_URL && !process.env.MYSQL_URL.includes('${{')) {
-        console.log('🔒 Usando MYSQL_URL (rede privada)');
+        console.log('🔒 Usando MYSQL_URL (rede privada Railway)');
         return {
             type: 'url',
             value: process.env.MYSQL_URL
