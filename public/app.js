@@ -5,6 +5,7 @@ class CatalogoApp {
         this.currentSubcategoriaId = null;
         this.currentData = [];
         this.editingItem = null;
+        this.verifiedPassword = null; // Store verified password
         
         this.initializeApp();
     }
@@ -314,6 +315,7 @@ class CatalogoApp {
             });
 
             if (response.ok) {
+                this.verifiedPassword = password; // Store the verified password
                 this.hidePasswordModal();
                 this.showAddEditModal();
             } else {
@@ -395,7 +397,7 @@ class CatalogoApp {
         }
 
         formData.append('nome', nome);
-        formData.append('password', 'verified'); // Password already verified
+        formData.append('password', this.verifiedPassword); // Use the verified password
 
         if (this.currentLevel === 'categorias') {
             await this.saveCategoria(formData);
@@ -517,6 +519,7 @@ class CatalogoApp {
                 });
 
                 if (response.ok) {
+                    this.verifiedPassword = password; // Store the verified password
                     this.hidePasswordModal();
                     this.showAddEditModal(this.contextMenuItem);
                 } else {
