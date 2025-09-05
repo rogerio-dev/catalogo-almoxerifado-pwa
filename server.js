@@ -31,13 +31,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Configuração do banco de dados
-const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQL_PUBLIC_URL;
+const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
 
 console.log('=== DETECÇÃO DE AMBIENTE ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('MYSQL_PUBLIC_URL presente:', !!process.env.MYSQL_PUBLIC_URL);
 console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
-console.log('MYSQLHOST:', process.env.MYSQLHOST);
+console.log('MYSQLHOST presente:', !!process.env.MYSQLHOST);
+console.log('MYSQLDATABASE presente:', !!process.env.MYSQLDATABASE);
+console.log('MYSQLUSER presente:', !!process.env.MYSQLUSER);
+console.log('MYSQLPASSWORD presente:', !!process.env.MYSQLPASSWORD);
+console.log('MYSQLPORT presente:', !!process.env.MYSQLPORT);
 console.log('isProduction:', isProduction);
 console.log('=== FIM AMBIENTE ===');
 
@@ -45,25 +48,42 @@ let pool;
 let db; // SQLite database
 
 if (isProduction) {
-  // MySQL para produção - USAR MYSQL_URL DIRETAMENTE
   console.log('=== CONFIGURAÇÃO MYSQL ===');
-  console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
-  console.log('MYSQL_PUBLIC_URL presente:', !!process.env.MYSQL_PUBLIC_URL);
-  console.log('MYSQLHOST:', process.env.MYSQLHOST);
   
-  // Usar MYSQL_URL que está completa e funcional
-  const mysqlUrl = process.env.MYSQL_URL;
+  // Configuração usando variáveis individuais do Railway
+  const mysqlConfig = {
+    host: process.env.MYSQLHOST,
+    user: process.env.MYSQLUSER,
+    password: process.env.MYSQLPASSWORD,
+    database: process.env.MYSQLDATABASE,
+    port: parseInt(process.env.MYSQLPORT) || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    acquireTimeout: 60000,
+    timeout: 60000,
+    reconnect: true,
+    charset: 'utf8mb4'
+  };
+
+  console.log('🐬 Configuração MySQL:');
+  console.log('Host:', mysqlConfig.host);
+  console.log('Database:', mysqlConfig.database);
+  console.log('User:', mysqlConfig.user);
+  console.log('Port:', mysqlConfig.port);
   
-  if (mysqlUrl) {
-    console.log('🐬 Usando MYSQL_URL interna (funcional)');
-    console.log('URL parcial:', mysqlUrl.substring(0, 30) + '...');
-    
-    // Criar pool diretamente com a URL
-    pool = mysql.createPool(mysqlUrl);
-    
-    console.log('✅ Pool MySQL criado diretamente com URL');
+  if (mysqlConfig.host && mysqlConfig.user && mysqlConfig.password && mysqlConfig.database) {
+    // Criar pool com configuração individual
+    pool = mysql.createPool(mysqlConfig);
+    console.log('✅ Pool MySQL criado com variáveis individuais');
+  } else if (process.env.MYSQL_URL) {
+    // Fallback para MYSQL_URL se as variáveis individuais não estiverem disponíveis
+    console.log('🔄 Usando MYSQL_URL como fallback');
+    pool = mysql.createPool(process.env.MYSQL_URL);
+    console.log('✅ Pool MySQL criado com URL');
   } else {
-    console.error('❌ MYSQL_URL não encontrada!');
+    console.error('❌ Variáveis MySQL não encontradas!');
+    console.error('Necessário: MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE');
     process.exit(1);
   }
 } else {
