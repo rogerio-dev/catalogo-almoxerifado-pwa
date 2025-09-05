@@ -36,34 +36,56 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLH
 console.log('=== DETECÇÃO DE AMBIENTE ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('MYSQLHOST:', process.env.MYSQLHOST);
+console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
+console.log('RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
 console.log('isProduction:', isProduction);
 console.log('=== FIM AMBIENTE ===');
+
+// Verificar se as variáveis do MySQL estão presentes
+if (isProduction) {
+  if (!process.env.MYSQL_URL && !process.env.MYSQLHOST) {
+    console.error('❌ ERRO: Variáveis do MySQL não encontradas!');
+    console.log('💡 Verifique se o serviço MySQL está conectado no Railway');
+    process.exit(1);
+  }
+}
 
 let pool;
 let db; // SQLite database
 
 if (isProduction) {
-  // MySQL para produção
-  const dbConfig = {
-    host: process.env.MYSQLHOST || process.env.DB_HOST,
-    port: process.env.MYSQLPORT || 3306,
-    user: process.env.MYSQLUSER || process.env.DB_USER,
-    password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD,
-    database: process.env.MYSQLDATABASE || process.env.DB_NAME,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-  };
-  
+  // MySQL para produção - usando MYSQL_URL diretamente
   console.log('=== CONFIGURAÇÃO MYSQL ===');
-  console.log('Host:', dbConfig.host);
-  console.log('Port:', dbConfig.port);
-  console.log('User:', dbConfig.user);
-  console.log('Database:', dbConfig.database);
-  console.log('Password presente:', !!dbConfig.password);
+  console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
+  console.log('MYSQLHOST:', process.env.MYSQLHOST);
   console.log('=== FIM CONFIG ===');
   
-  pool = mysql.createPool(dbConfig);
+  if (process.env.MYSQL_URL) {
+    // Usar URL completa do MySQL
+    pool = mysql.createPool(process.env.MYSQL_URL);
+    console.log('🐬 Conectando via MYSQL_URL');
+  } else {
+    // Fallback para configuração manual
+    const dbConfig = {
+      host: process.env.MYSQLHOST,
+      port: process.env.MYSQLPORT || 3306,
+      user: process.env.MYSQLUSER,
+      password: process.env.MYSQLPASSWORD,
+      database: process.env.MYSQLDATABASE,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
+    };
+    
+    console.log('Host:', dbConfig.host);
+    console.log('Port:', dbConfig.port);
+    console.log('User:', dbConfig.user);
+    console.log('Database:', dbConfig.database);
+    console.log('Password presente:', !!dbConfig.password);
+    
+    pool = mysql.createPool(dbConfig);
+    console.log('🐬 Conectando via configuração manual');
+  }
 } else {
   // SQLite para desenvolvimento
   db = new sqlite3.Database('./database.sqlite', (err) => {
@@ -79,19 +101,26 @@ if (isProduction) {
 async function initializeDatabase() {
   try {
     if (isProduction) {
-      // MySQL
+      // MySQL - testar conexão
+      console.log('🔄 Tentando conectar ao MySQL...');
       const connection = await pool.getConnection();
-      console.log('Conectado ao MySQL');
+      console.log('✅ Conectado ao MySQL com sucesso!');
       await createMySQLTables(connection);
       connection.release();
+      console.log('✅ Tabelas MySQL criadas/verificadas');
     } else {
       // SQLite
       await createSQLiteTables();
     }
   } catch (error) {
-    console.error('Erro ao conectar com o banco:', error);
+    console.error('❌ ERRO AO CONECTAR COM O BANCO:', error);
+    console.error('Detalhes do erro:', error.message);
+    
     if (isProduction) {
-      process.exit(1);
+      console.log('🔄 Tentando novamente em 5 segundos...');
+      setTimeout(() => {
+        initializeDatabase();
+      }, 5000);
     }
   }
 }
