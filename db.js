@@ -16,7 +16,8 @@ async function connect() {
                 
                 // Debug das variáveis disponíveis
                 console.log('🔍 VARIÁVEIS DISPONÍVEIS:');
-                console.log('MYSQL_URL:', process.env.MYSQL_URL ? '[DEFINIDA]' : '[NÃO DEFINIDA]');
+                console.log('MYSQL_URL:', process.env.MYSQL_URL ? `[${process.env.MYSQL_URL.length} chars]` : '[NÃO DEFINIDA]');
+                console.log('MYSQL_PUBLIC_URL:', process.env.MYSQL_PUBLIC_URL ? `[${process.env.MYSQL_PUBLIC_URL.length} chars]` : '[NÃO DEFINIDA]');
                 console.log('MYSQLHOST:', process.env.MYSQLHOST);
                 console.log('MYSQL_HOST:', process.env.MYSQL_HOST);
                 console.log('MYSQLPORT:', process.env.MYSQLPORT);
@@ -26,11 +27,22 @@ async function connect() {
                 console.log('MYSQLDATABASE:', process.env.MYSQLDATABASE);
                 console.log('MYSQL_DATABASE:', process.env.MYSQL_DATABASE);
                 
-                // Estratégia 1: Tentar com MYSQL_URL (mais provável de funcionar)
-                if (process.env.MYSQL_URL && process.env.MYSQL_URL !== '${{{MYSQL_URL}}}') {
+                // Função para validar URL
+                const isValidUrl = (url) => {
+                    if (!url || url.includes('${{{') || url.includes('}}}')) return false;
+                    try {
+                        new URL(url);
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                };
+                
+                // Estratégia 1: Tentar com MYSQL_URL
+                if (process.env.MYSQL_URL && isValidUrl(process.env.MYSQL_URL)) {
                     console.log('\n🧪 ESTRATÉGIA 1: Usando MYSQL_URL');
                     try {
-                        console.log('URL:', process.env.MYSQL_URL.replace(/:[^:@]+@/, ':***@'));
+                        console.log('URL completa:', process.env.MYSQL_URL.replace(/:[^:@]+@/, ':***@'));
                         pool = mysql.createPool(process.env.MYSQL_URL);
                         
                         // Testar a conexão
@@ -49,7 +61,30 @@ async function connect() {
                     }
                 }
                 
-                // Estratégia 2: Construir URL TCP manualmente
+                // Estratégia 2: Tentar com MYSQL_PUBLIC_URL
+                if (process.env.MYSQL_PUBLIC_URL && isValidUrl(process.env.MYSQL_PUBLIC_URL)) {
+                    console.log('\n🧪 ESTRATÉGIA 2: Usando MYSQL_PUBLIC_URL');
+                    try {
+                        console.log('URL TCP completa:', process.env.MYSQL_PUBLIC_URL.replace(/:[^:@]+@/, ':***@'));
+                        pool = mysql.createPool(process.env.MYSQL_PUBLIC_URL);
+                        
+                        // Testar a conexão
+                        const testConn = await pool.getConnection();
+                        await testConn.execute('SELECT 1');
+                        testConn.release();
+                        
+                        console.log('✅ SUCESSO com MYSQL_PUBLIC_URL!');
+                        return pool;
+                    } catch (error) {
+                        console.log('❌ MYSQL_PUBLIC_URL falhou:', error.message);
+                        if (pool) {
+                            await pool.end().catch(() => {});
+                            pool = null;
+                        }
+                    }
+                }
+                
+                // Estratégia 3: Construir URL TCP manualmente
                 const host = process.env.MYSQLHOST || process.env.MYSQL_HOST;
                 const port = process.env.MYSQLPORT || process.env.MYSQL_PORT || '3306';
                 const user = process.env.MYSQLUSER || process.env.MYSQL_USER;
@@ -57,7 +92,7 @@ async function connect() {
                 const database = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE;
                 
                 if (host && user && password && database) {
-                    console.log('\n🧪 ESTRATÉGIA 2: Construindo URL TCP manualmente');
+                    console.log('\n🧪 ESTRATÉGIA 3: Construindo URL TCP manualmente');
                     try {
                         // Verificar se é host interno e tentar convertê-lo para TCP Proxy
                         let tcpHost = host;
@@ -68,8 +103,8 @@ async function connect() {
                             console.log(`🔄 Convertendo host interno para TCP: ${host} -> ${tcpHost}`);
                         }
                         
-                        const tcpUrl = `mysql://${user}:${password}@${tcpHost}:${port}/${database}?ssl=false`;
-                        console.log('TCP URL:', tcpUrl.replace(password, '***'));
+                        const tcpUrl = `mysql://${user}:${password}@${tcpHost}:${port}/${database}`;
+                        console.log('TCP URL construída:', tcpUrl.replace(password, '***'));
                         
                         pool = mysql.createPool(tcpUrl);
                         
@@ -88,8 +123,8 @@ async function connect() {
                         }
                     }
                     
-                    // Estratégia 3: Tentar com configuração tradicional
-                    console.log('\n🧪 ESTRATÉGIA 3: Configuração tradicional');
+                    // Estratégia 4: Tentar com configuração tradicional
+                    console.log('\n🧪 ESTRATÉGIA 4: Configuração tradicional');
                     try {
                         const config = {
                             host: host,
@@ -129,7 +164,21 @@ async function connect() {
                     }
                 }
                 
-                throw new Error('❌ TODAS AS ESTRATÉGIAS DE CONEXÃO MYSQL FALHARAM!');
+                console.log('\n❌ TODAS AS ESTRATÉGIAS DE CONEXÃO MYSQL FALHARAM!');
+                console.log('🔄 Caindo de volta para SQLite...');
+                
+                // Fallback para SQLite se MySQL falhar
+                if (!db) {
+                    console.log('🔄 Conectando ao SQLite como fallback...');
+                    db = new sqlite3.Database('./database.sqlite', (err) => {
+                        if (err) {
+                            console.error('❌ Erro ao conectar com SQLite:', err);
+                            throw err;
+                        }
+                        console.log('✅ Conectado ao SQLite como fallback');
+                    });
+                }
+                return db;
             }
             return pool;
         } else {
