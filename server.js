@@ -6,6 +6,7 @@ const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -193,9 +194,17 @@ function executeQuery(query, params = []) {
 }
 
 // Configuração do multer para upload de imagens
+const uploadDir = 'public/uploads/';
+
+// Criar diretório de uploads se não existir
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log('📁 Diretório de uploads criado:', uploadDir);
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'public/uploads/');
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -221,21 +230,48 @@ const upload = multer({
   }
 });
 
+// Middleware para tratar erros do multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.log('ERRO MULTER:', err.message);
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Arquivo muito grande. Máximo 5MB.' });
+    }
+    return res.status(400).json({ error: 'Erro no upload: ' + err.message });
+  }
+  if (err.message === 'Apenas imagens são permitidas!') {
+    console.log('ERRO TIPO ARQUIVO:', err.message);
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
+};
+
+// Configuração da senha admin
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+
 // Middleware para verificar senha em FormData (após multer)
 const checkPasswordFormData = (req, res, next) => {
   const { password } = req.body;
-  console.log('Senha recebida:', password); // Debug
-  console.log('Senha esperada:', process.env.ADMIN_PASSWORD); // Debug
-  if (password !== process.env.ADMIN_PASSWORD) {
+  console.log('=== MIDDLEWARE CHECKPASSWORD ===');
+  console.log('Senha recebida:', password);
+  console.log('Senha esperada:', ADMIN_PASSWORD);
+  console.log('São iguais?', password === ADMIN_PASSWORD);
+  console.log('Tipo senha recebida:', typeof password);
+  console.log('Tipo senha esperada:', typeof ADMIN_PASSWORD);
+  console.log('=== FIM DEBUG ===');
+  
+  if (password !== ADMIN_PASSWORD) {
+    console.log('ERRO: Senha incorreta!');
     return res.status(401).json({ error: 'Senha incorreta' });
   }
+  console.log('SUCESSO: Senha correta!');
   next();
 };
 
 // Middleware para verificar senha
 const checkPassword = (req, res, next) => {
   const { password } = req.body;
-  if (password !== process.env.ADMIN_PASSWORD) {
+  if (password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: 'Senha incorreta' });
   }
   next();
@@ -246,7 +282,9 @@ const checkPassword = (req, res, next) => {
 // Verificar senha
 app.post('/api/verify-password', (req, res) => {
   const { password } = req.body;
-  if (password === process.env.ADMIN_PASSWORD) {
+  console.log('Tentativa de login com senha:', password); // Debug
+  console.log('Senha esperada:', ADMIN_PASSWORD); // Debug
+  if (password === ADMIN_PASSWORD) {
     res.json({ success: true });
   } else {
     res.status(401).json({ error: 'Senha incorreta' });
@@ -373,14 +411,26 @@ app.get('/api/itens/:subcategoriaId', async (req, res) => {
   }
 });
 
-app.post('/api/itens', upload.single('imagem'), checkPasswordFormData, async (req, res) => {
+app.post('/api/itens', upload.single('imagem'), handleMulterError, checkPasswordFormData, async (req, res) => {
   try {
+    console.log('=== CRIANDO ITEM ===');
+    console.log('Body:', req.body);
+    console.log('File:', req.file);
+    console.log('Has file:', !!req.file);
+    
     const { nome, subcategoria_id } = req.body;
     const imagem = req.file ? `/uploads/${req.file.filename}` : null;
     
+    console.log('Nome:', nome);
+    console.log('Subcategoria ID:', subcategoria_id);
+    console.log('Imagem path:', imagem);
+    
     const [result] = await executeQuery('INSERT INTO itens (nome, imagem, subcategoria_id) VALUES (?, ?, ?)', [nome, imagem, subcategoria_id]);
+    
+    console.log('Item criado com sucesso, ID:', result.insertId);
     res.json({ id: result.insertId, nome, imagem, subcategoria_id });
   } catch (error) {
+    console.error('ERRO AO CRIAR ITEM:', error);
     if (error.code === 'ER_DUP_ENTRY' || error.code === 'SQLITE_CONSTRAINT') {
       res.status(400).json({ error: 'Item já existe nesta subcategoria' });
     } else {
