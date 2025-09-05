@@ -67,6 +67,9 @@ async function connect() {
                 console.log('URL Proxy:', config.value.replace(/:[^:@]+@/, ':***@'));
                 pool = mysql.createPool(config.value);
             } else {
+                // Forçar IPv4 ao criar pool de conexões
+                config.value.host = config.value.host.replace(/\[.*\]/, '127.0.0.1');
+                
                 console.log('Config MySQL:', {
                     host: config.value.host,
                     port: config.value.port,
