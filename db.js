@@ -124,6 +124,13 @@ async function connect() {
                         console.log('Não foi possível resolver IPv4 do host (a partir da URL), usando hostname original:', parsedConfig.host);
                     }
 
+                    console.log('Pool config a partir da URL (antes de criar pool):', {
+                        host: parsedConfig.host,
+                        port: parsedConfig.port,
+                        user: parsedConfig.user,
+                        database: parsedConfig.database
+                    });
+
                     return mysql.createPool(parsedConfig);
                 } catch (e) {
                     // If anything fails parsing/resolving, try passing the raw URL to mysql2 as a last resort
@@ -200,7 +207,7 @@ async function connect() {
                 if ((err.code === 'ECONNREFUSED' || err.message.includes('ECONNREFUSED')) && process.env.MYSQL_PUBLIC_URL && validateUrlHasHost(process.env.MYSQL_PUBLIC_URL)) {
                     console.log('🔁 Tentando fallback para MYSQL_PUBLIC_URL devido a ECONNREFUSED...');
                     try {
-                        pool = createPoolFromUrl(process.env.MYSQL_PUBLIC_URL);
+                        pool = await createPoolFromUrl(process.env.MYSQL_PUBLIC_URL);
                         const testConn2 = await pool.getConnection();
                         await testConn2.execute('SELECT 1 as test');
                         testConn2.release();
