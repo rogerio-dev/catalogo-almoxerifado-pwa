@@ -63,8 +63,8 @@ async function connect() {
             
             // Debug das variáveis
             console.log('🔍 VARIÁVEIS DISPONÍVEIS:');
-            console.log('MYSQL_PUBLIC_URL:', process.env.MYSQL_PUBLIC_URL ? '[DEFINIDA]' : '[NÃO DEFINIDA]');
-            console.log('MYSQL_URL:', process.env.MYSQL_URL ? '[DEFINIDA]' : '[NÃO DEFINIDA]');
+            console.log('MYSQL_PUBLIC_URL:', process.env.MYSQL_PUBLIC_URL);
+            console.log('MYSQL_URL:', process.env.MYSQL_URL);
             console.log('MYSQLHOST:', process.env.MYSQLHOST);
             console.log('MYSQLPORT:', process.env.MYSQLPORT);
             console.log('MYSQLUSER:', process.env.MYSQLUSER);

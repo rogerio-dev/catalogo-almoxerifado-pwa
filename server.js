@@ -354,7 +354,7 @@ async function startServer() {
   await initializeDatabase();
   app.listen(PORT, () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    console.log(`📊 Ambiente: ${isProduction ? 'Produção (MySQL)' : 'Desenvolvimento (SQLite)'}`);
+    console.log('�️ Usando: MySQL Railway');
   });
 }
 
