@@ -2,6 +2,42 @@ const mysql = require('mysql2/promise');
 const dns = require('dns').promises;
 require('dotenv').config();
 
+// Helper: check non-empty env value and avoid unresolved template values
+const isFilled = (v) => typeof v === 'string' && v.trim() !== '' && !v.includes('${{');
+
+// Helper: validate a URL string contains a usable hostname
+const validateUrlHasHost = (raw) => {
+    try {
+        const parsed = new URL(raw);
+        return typeof parsed.hostname === 'string' && parsed.hostname.trim().length > 0 && parsed.hostname !== ':';
+    } catch (e) {
+        return false;
+    }
+};
+
+// Helper: parse a mysql:// URL into a mysql2 pool config object
+const parseMysqlUrlToConfig = (rawUrl) => {
+    const parsed = new URL(rawUrl);
+    const user = parsed.username || process.env.MYSQLUSER;
+    const password = parsed.password || process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD;
+    const host = parsed.hostname;
+    const port = parsed.port ? parseInt(parsed.port, 10) : 3306;
+    const database = (parsed.pathname || '').replace(/^\//, '') || process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE;
+
+    return {
+        host,
+        port,
+        user,
+        password,
+        database,
+        charset: 'utf8mb4',
+        connectionLimit: 10,
+        acquireTimeout: 60000,
+        reconnect: true,
+        ssl: false
+    };
+};
+
 // Verificar se estamos em produção
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
 
@@ -9,17 +45,6 @@ let pool;
 
 // Configuração MySQL baseada nas variáveis do Railway
 const getMySQLConfig = () => {
-    const isFilled = (v) => typeof v === 'string' && v.trim() !== '' && !v.includes('${{');
-
-    const validateUrlHasHost = (raw) => {
-        try {
-            const parsed = new URL(raw);
-            return typeof parsed.hostname === 'string' && parsed.hostname.trim().length > 0 && parsed.hostname !== ':';
-        } catch (e) {
-            return false;
-        }
-    };
-
     // Prefer the private MYSQL_URL (works inside Railway) when valid
     if (isFilled(process.env.MYSQL_URL) && validateUrlHasHost(process.env.MYSQL_URL)) {
         console.log('🔒 Usando MYSQL_URL (rede privada Railway)');
@@ -84,24 +109,42 @@ async function connect() {
 
             const config = getMySQLConfig();
 
-            const createPoolFromUrl = (url) => {
+            // Create pool from URL but prefer resolving host to IPv4 to avoid IPv6 ECONNREFUSED
+            const createPoolFromUrl = async (url) => {
                 try {
-                    console.log('Criando pool a partir da URL (secure)');
-                    return mysql.createPool(url);
+                    // Parse URL into config so we can resolve hostname
+                    const parsedConfig = parseMysqlUrlToConfig(url);
+
+                    // Try IPv4 resolution for the hostname
+                    try {
+                        const lookup = await dns.lookup(parsedConfig.host, { family: 4 });
+                        parsedConfig.host = lookup.address;
+                        console.log('Host resolvido para IPv4 (a partir da URL):', parsedConfig.host);
+                    } catch (dnsErr) {
+                        console.log('Não foi possível resolver IPv4 do host (a partir da URL), usando hostname original:', parsedConfig.host);
+                    }
+
+                    return mysql.createPool(parsedConfig);
                 } catch (e) {
-                    console.error('Erro ao criar pool a partir da URL:', e.message);
-                    throw e;
+                    // If anything fails parsing/resolving, try passing the raw URL to mysql2 as a last resort
+                    try {
+                        console.log('Tentando criar pool diretamente a partir da string de conexão (última tentativa)');
+                        return mysql.createPool(url);
+                    } catch (innerErr) {
+                        console.error('Erro ao criar pool a partir da URL (direta):', innerErr.message);
+                        throw innerErr;
+                    }
                 }
             };
 
             if (config.type === 'url' || config.type === 'public-url') {
                 console.log(config.type === 'public-url' ? 'Usando PUBLIC URL' : 'Usando PRIVATE URL');
                 try {
-                    pool = createPoolFromUrl(config.value);
+                    pool = await createPoolFromUrl(config.value);
                 } catch (e) {
                     console.error('Falha ao criar pool a partir da URL:', e.message);
                     // fallthrough to try manual config if available
-                    if (config.type === 'public-url' && isFilled(process.env.MYSQLHOST)) {
+                    if (isFilled(process.env.MYSQLHOST)) {
                         console.log('Tentando usar configuração manual via MYSQLHOST como fallback');
                         // build manual config
                         const manual = {
