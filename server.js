@@ -31,7 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Configuração do banco de dados
-const isProduction = false; // Forçar SQLite temporariamente até configurar MySQL no Railway
+const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
 
 let pool;
 let db; // SQLite database
