@@ -41,40 +41,48 @@ console.log('RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
 console.log('isProduction:', isProduction);
 console.log('=== FIM AMBIENTE ===');
 
-// Verificar se as variáveis do MySQL estão presentes
-if (isProduction) {
-  if (!process.env.MYSQL_URL && !process.env.MYSQLHOST) {
-    console.error('❌ ERRO: Variáveis do MySQL não encontradas!');
-    console.log('💡 Verifique se o serviço MySQL está conectado no Railway');
-    process.exit(1);
-  }
-}
-
 let pool;
 let db; // SQLite database
 
 if (isProduction) {
-  // MySQL para produção - usando MYSQL_URL diretamente
+  // MySQL para produção - configuração otimizada
   console.log('=== CONFIGURAÇÃO MYSQL ===');
   console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
   console.log('MYSQLHOST:', process.env.MYSQLHOST);
   console.log('=== FIM CONFIG ===');
   
   if (process.env.MYSQL_URL) {
-    // Usar URL completa do MySQL
-    pool = mysql.createPool(process.env.MYSQL_URL);
-    console.log('🐬 Conectando via MYSQL_URL');
+    // Usar URL completa do MySQL com configurações extras
+    const connectionOptions = {
+      ...require('url').parse(process.env.MYSQL_URL, true),
+      acquireTimeout: 60000,
+      timeout: 60000,
+      reconnect: true,
+      charset: 'utf8mb4',
+      timezone: '+00:00',
+      supportBigNumbers: true,
+      bigNumberStrings: true
+    };
+    
+    pool = mysql.createPool(process.env.MYSQL_URL + '?charset=utf8mb4&timezone=%2B00%3A00');
+    console.log('🐬 Conectando via MYSQL_URL com configurações extras');
   } else {
-    // Fallback para configuração manual
+    // Fallback para configuração manual com IPv4 forçado
     const dbConfig = {
       host: process.env.MYSQLHOST,
-      port: process.env.MYSQLPORT || 3306,
+      port: parseInt(process.env.MYSQLPORT) || 3306,
       user: process.env.MYSQLUSER,
       password: process.env.MYSQLPASSWORD,
       database: process.env.MYSQLDATABASE,
       waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
+      connectionLimit: 5,
+      queueLimit: 0,
+      acquireTimeout: 60000,
+      timeout: 60000,
+      reconnect: true,
+      charset: 'utf8mb4',
+      timezone: '+00:00',
+      family: 4 // Forçar IPv4
     };
     
     console.log('Host:', dbConfig.host);
@@ -84,7 +92,7 @@ if (isProduction) {
     console.log('Password presente:', !!dbConfig.password);
     
     pool = mysql.createPool(dbConfig);
-    console.log('🐬 Conectando via configuração manual');
+    console.log('🐬 Conectando via configuração manual (IPv4)');
   }
 } else {
   // SQLite para desenvolvimento
