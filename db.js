@@ -10,10 +10,11 @@ const mysqlConfig = {
     password: process.env.MYSQLPASSWORD,
     database: process.env.MYSQLDATABASE,
     connectionLimit: 10,
-    acquireTimeout: 60000,
-    timeout: 60000,
-    reconnect: true,
-    charset: 'utf8mb4'
+    charset: 'utf8mb4',
+    // Forçar IPv4 para evitar problemas com IPv6
+    family: 4,
+    // Remover configurações problemáticas
+    ssl: false
 };
 
 // Verificar se estamos em produção
@@ -28,20 +29,34 @@ async function connect() {
             if (!pool) {
                 console.log('=== CONFIGURAÇÃO MYSQL ===');
                 console.log('🔄 Conectando ao MySQL...');
-                console.log('Host:', mysqlConfig.host);
-                console.log('Database:', mysqlConfig.database);
-                console.log('User:', mysqlConfig.user);
-                console.log('Port:', mysqlConfig.port);
                 
-                if (mysqlConfig.host && mysqlConfig.user && mysqlConfig.password && mysqlConfig.database) {
-                    pool = mysql.createPool(mysqlConfig);
-                    console.log('✅ Pool de conexão MySQL criado com sucesso!');
-                } else if (process.env.MYSQL_URL) {
-                    console.log('🔄 Usando MYSQL_URL como fallback...');
-                    pool = mysql.createPool(process.env.MYSQL_URL);
+                // Tentar primeiro com MYSQL_URL (mais confiável no Railway)
+                if (process.env.MYSQL_URL) {
+                    console.log('🐬 Usando MYSQL_URL para conexão');
+                    const mysqlUrl = process.env.MYSQL_URL;
+                    console.log('URL parcial:', mysqlUrl.substring(0, 30) + '...');
+                    
+                    // Configuração específica para Railway usando URL
+                    pool = mysql.createPool({
+                        uri: mysqlUrl,
+                        connectionLimit: 10,
+                        charset: 'utf8mb4',
+                        ssl: false,
+                        family: 4 // Forçar IPv4
+                    });
+                    
                     console.log('✅ Pool MySQL criado com URL');
+                } else if (mysqlConfig.host && mysqlConfig.user && mysqlConfig.password && mysqlConfig.database) {
+                    console.log('🐬 Usando variáveis individuais');
+                    console.log('Host:', mysqlConfig.host);
+                    console.log('Database:', mysqlConfig.database);
+                    console.log('User:', mysqlConfig.user);
+                    console.log('Port:', mysqlConfig.port);
+                    
+                    pool = mysql.createPool(mysqlConfig);
+                    console.log('✅ Pool MySQL criado com variáveis individuais');
                 } else {
-                    throw new Error('Variáveis MySQL não encontradas! Necessário: MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE');
+                    throw new Error('Variáveis MySQL não encontradas! Necessário: MYSQL_URL ou MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE');
                 }
             }
             return pool;
