@@ -1,4 +1,5 @@
 const mysql = require('mysql2/promise');
+const dns = require('dns').promises;
 require('dotenv').config();
 
 // Verificar se estamos em produção
@@ -8,23 +9,32 @@ let pool;
 
 // Configuração MySQL baseada nas variáveis do Railway
 const getMySQLConfig = () => {
-    const isFilled = (v) => v && !v.includes('${{');
+    const isFilled = (v) => typeof v === 'string' && v.trim() !== '' && !v.includes('${{');
 
-    // Prefer the public TCP proxy URL (resolves from outside Railway)
-    if (isFilled(process.env.MYSQL_PUBLIC_URL)) {
-        console.log('🔒 Usando MYSQL_PUBLIC_URL (proxy público Railway)');
-        return {
-            type: 'public-url',
-            value: process.env.MYSQL_PUBLIC_URL
-        };
-    }
+    const validateUrlHasHost = (raw) => {
+        try {
+            const parsed = new URL(raw);
+            return typeof parsed.hostname === 'string' && parsed.hostname.trim().length > 0 && parsed.hostname !== ':';
+        } catch (e) {
+            return false;
+        }
+    };
 
-    // Usar MYSQL_URL diretamente (rede privada Railway)
-    if (isFilled(process.env.MYSQL_URL)) {
+    // Prefer the private MYSQL_URL (works inside Railway) when valid
+    if (isFilled(process.env.MYSQL_URL) && validateUrlHasHost(process.env.MYSQL_URL)) {
         console.log('🔒 Usando MYSQL_URL (rede privada Railway)');
         return {
             type: 'url',
             value: process.env.MYSQL_URL
+        };
+    }
+
+    // Use public TCP proxy URL only if it contains a real host
+    if (isFilled(process.env.MYSQL_PUBLIC_URL) && validateUrlHasHost(process.env.MYSQL_PUBLIC_URL)) {
+        console.log('🔒 Usando MYSQL_PUBLIC_URL (proxy público Railway)');
+        return {
+            type: 'public-url',
+            value: process.env.MYSQL_PUBLIC_URL
         };
     }
 
@@ -41,7 +51,7 @@ const getMySQLConfig = () => {
             type: 'config',
             value: {
                 host: host,
-                port: parseInt(port),
+                port: parseInt(port, 10),
                 user: user,
                 password: password,
                 database: database,
@@ -86,16 +96,49 @@ async function connect() {
 
             if (config.type === 'url' || config.type === 'public-url') {
                 console.log(config.type === 'public-url' ? 'Usando PUBLIC URL' : 'Usando PRIVATE URL');
-                pool = createPoolFromUrl(config.value);
+                try {
+                    pool = createPoolFromUrl(config.value);
+                } catch (e) {
+                    console.error('Falha ao criar pool a partir da URL:', e.message);
+                    // fallthrough to try manual config if available
+                    if (config.type === 'public-url' && isFilled(process.env.MYSQLHOST)) {
+                        console.log('Tentando usar configuração manual via MYSQLHOST como fallback');
+                        // build manual config
+                        const manual = {
+                            host: process.env.MYSQLHOST,
+                            port: parseInt(process.env.MYSQLPORT || '3306', 10),
+                            user: process.env.MYSQLUSER,
+                            password: process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD,
+                            database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE,
+                            charset: 'utf8mb4',
+                            connectionLimit: 10,
+                            acquireTimeout: 60000,
+                            reconnect: true,
+                            ssl: false
+                        };
+                        // try resolve IPv4
+                        try {
+                            const lookup = await dns.lookup(manual.host, { family: 4 });
+                            manual.host = lookup.address;
+                            console.log('Host resolvido para IPv4:', manual.host);
+                        } catch (dnsErr) {
+                            console.log('Não foi possível resolver IPv4 do host, usando valor original:', manual.host);
+                        }
+                        pool = mysql.createPool(manual);
+                    } else {
+                        throw e;
+                    }
+                }
             } else {
-                // Forçar substituição de host com colchetes não confiáveis não ajuda quando DNS retorna IPv6.
-                // Tentar conectar com a configuração 'config' e, em caso de ECONNREFUSED, tentar fallback para MYSQL_PUBLIC_URL.
-                console.log('Config MySQL (manual):', {
-                    host: config.value.host,
-                    port: config.value.port,
-                    user: config.value.user,
-                    database: config.value.database
-                });
+                // config.type === 'config'
+                // Try to resolve hostname to IPv4 to avoid IPv6 ECONNREFUSED
+                try {
+                    const lookup = await dns.lookup(config.value.host, { family: 4 });
+                    config.value.host = lookup.address;
+                    console.log('Host resolvido para IPv4:', config.value.host);
+                } catch (dnsErr) {
+                    console.log('Não foi possível resolver IPv4 do host, usando valor original:', config.value.host);
+                }
 
                 pool = mysql.createPool(config.value);
             }
@@ -110,8 +153,8 @@ async function connect() {
             } catch (err) {
                 console.error('❌ Falha ao testar pool inicial:', err.message);
 
-                // Se tiver MYSQL_PUBLIC_URL disponível, tentar fallback para o proxy público (útil quando IPv6 privado recusa)
-                if ((err.code === 'ECONNREFUSED' || err.message.includes('ECONNREFUSED')) && process.env.MYSQL_PUBLIC_URL && !process.env.MYSQL_PUBLIC_URL.includes('${{')) {
+                // Se tiver MYSQL_PUBLIC_URL disponível e ainda não tentamos como manual, tentar fallback
+                if ((err.code === 'ECONNREFUSED' || err.message.includes('ECONNREFUSED')) && process.env.MYSQL_PUBLIC_URL && validateUrlHasHost(process.env.MYSQL_PUBLIC_URL)) {
                     console.log('🔁 Tentando fallback para MYSQL_PUBLIC_URL devido a ECONNREFUSED...');
                     try {
                         pool = createPoolFromUrl(process.env.MYSQL_PUBLIC_URL);
