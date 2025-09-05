@@ -33,6 +33,12 @@ app.use(express.static('public'));
 // Configuração do banco de dados
 const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
 
+console.log('=== DETECÇÃO DE AMBIENTE ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('MYSQLHOST:', process.env.MYSQLHOST);
+console.log('isProduction:', isProduction);
+console.log('=== FIM AMBIENTE ===');
+
 let pool;
 let db; // SQLite database
 
@@ -48,6 +54,15 @@ if (isProduction) {
     connectionLimit: 10,
     queueLimit: 0
   };
+  
+  console.log('=== CONFIGURAÇÃO MYSQL ===');
+  console.log('Host:', dbConfig.host);
+  console.log('Port:', dbConfig.port);
+  console.log('User:', dbConfig.user);
+  console.log('Database:', dbConfig.database);
+  console.log('Password presente:', !!dbConfig.password);
+  console.log('=== FIM CONFIG ===');
+  
   pool = mysql.createPool(dbConfig);
 } else {
   // SQLite para desenvolvimento
