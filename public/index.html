@@ -6,29 +6,38 @@
     <meta name="theme-color" content="#2196F3">
     <title>Catálogo Almoxerifado</title>
     
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="/icons/FAVICON.jpg">
+    <link rel="shortcut icon" type="image/jpeg" href="/icons/FAVICON.jpg">
+    <link rel="apple-touch-icon" href="/icons/FAVICON.jpg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/FAVICON.jpg">
+    <link rel="icon" type="image/jpeg" sizes="32x32" href="/icons/FAVICON.jpg">
+    <link rel="icon" type="image/jpeg" sizes="16x16" href="/icons/FAVICON.jpg">
+    
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Catálogo Almoxerifado">
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="/icons/FAVICON.jpg">
     
     <!-- Styles -->
     <link rel="stylesheet" href="/styles.css">
     
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
 </head>
 <body>
     <div id="app">
         <!-- Header -->
         <header id="header">
             <button id="backBtn" class="back-btn" style="display: none;">
-                <i class="fas fa-arrow-left"></i>
+                ←
             </button>
             <h1 id="headerTitle">Catálogo Almoxerifado</h1>
             <button id="addBtn" class="add-btn">
-                <i class="fas fa-plus"></i>
+                +
             </button>
         </header>
 
@@ -96,7 +105,38 @@
 
         <!-- Toast -->
         <div id="toast" class="toast"></div>
+
+        <!-- Image Modal -->
+        <div id="imageModal" class="image-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title" id="modalItemName">Nome do Item</h2>
+                    <button class="modal-close" id="modalCloseBtn">&times;</button>
+                </div>
+                <div class="modal-image-container">
+                    <div class="image-loading" id="imageLoading">
+                        <div class="loading-spinner"></div>
+                        Carregando imagem...
+                    </div>
+                    <img class="modal-image" id="modalImage" style="display: none;" alt="Imagem do item">
+                </div>
+                <div class="modal-info">
+                    <h3 id="modalItemTitle">Nome do Item</h3>
+                    <div class="modal-breadcrumb" id="modalBreadcrumb">
+                        <span>Categoria</span>
+                        <span>Subcategoria</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <!-- Footer -->
+    <footer id="footer">
+        <div class="developer-credit">
+            Desenvolvido por: <span class="developer-name">Rogerio Carvalho</span>
+        </div>
+    </footer>
 
     <!-- Scripts -->
     <script src="/app.js"></script>

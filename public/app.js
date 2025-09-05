@@ -36,6 +36,13 @@ class CatalogoApp {
         document.getElementById('editOption').addEventListener('click', () => this.editItem());
         document.getElementById('deleteOption').addEventListener('click', () => this.deleteItem());
 
+        // Image modal
+        document.getElementById('modalCloseBtn').addEventListener('click', () => this.hideImageModal());
+        document.getElementById('imageModal').addEventListener('click', (e) => {
+            if (e.target.id === 'imageModal') this.hideImageModal();
+        });
+        document.getElementById('modalImage').addEventListener('click', () => this.toggleImageZoom());
+
         // Click outside modals
         document.getElementById('passwordModal').addEventListener('click', (e) => {
             if (e.target.id === 'passwordModal') this.hidePasswordModal();
@@ -48,6 +55,23 @@ class CatalogoApp {
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.context-menu')) {
                 this.hideContextMenu();
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const imageModal = document.getElementById('imageModal');
+                const passwordModal = document.getElementById('passwordModal');
+                const addEditModal = document.getElementById('addEditModal');
+                
+                if (imageModal.classList.contains('show')) {
+                    this.hideImageModal();
+                } else if (passwordModal.style.display === 'flex') {
+                    this.hidePasswordModal();
+                } else if (addEditModal.style.display === 'flex') {
+                    this.hideAddEditModal();
+                }
             }
         });
     }
@@ -278,6 +302,15 @@ class CatalogoApp {
                     <div class="card-title">${item.nome}</div>
                 </div>
             `;
+            
+            // Add click event for image expansion (only if item has image)
+            if (item.imagem) {
+                const img = card.querySelector('.item-image');
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.showImageModal(item);
+                });
+            }
             
             card.addEventListener('contextmenu', (e) => this.showContextMenu(e, item));
             
@@ -605,6 +638,72 @@ class CatalogoApp {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
+    }
+
+    // Image Modal Methods
+    showImageModal(item) {
+        const modal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        const modalItemName = document.getElementById('modalItemName');
+        const modalItemTitle = document.getElementById('modalItemTitle');
+        const modalBreadcrumb = document.getElementById('modalBreadcrumb');
+        const imageLoading = document.getElementById('imageLoading');
+
+        // Get category and subcategory names from item data
+        const categoria = item.categoria_nome || 'Categoria';
+        const subcategoria = item.subcategoria_nome || 'Subcategoria';
+
+        // Set modal content
+        modalItemName.textContent = item.nome;
+        modalItemTitle.textContent = item.nome;
+        modalBreadcrumb.innerHTML = `
+            <span>${categoria}</span>
+            <span>${subcategoria}</span>
+        `;
+
+        // Show loading and hide image initially
+        imageLoading.style.display = 'block';
+        modalImage.style.display = 'none';
+        modalImage.classList.remove('zoomed');
+
+        // Load image
+        modalImage.src = item.imagem;
+        modalImage.onload = () => {
+            imageLoading.style.display = 'none';
+            modalImage.style.display = 'block';
+        };
+
+        modalImage.onerror = () => {
+            imageLoading.innerHTML = `
+                <div style="text-align: center; color: var(--error-color);">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+                    <div>Erro ao carregar imagem</div>
+                </div>
+            `;
+        };
+
+        // Show modal
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden'; // Prevent body scroll
+    }
+
+    hideImageModal() {
+        const modal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        
+        modal.classList.remove('show');
+        modalImage.classList.remove('zoomed');
+        document.body.style.overflow = ''; // Restore body scroll
+        
+        // Clear image src after animation
+        setTimeout(() => {
+            modalImage.src = '';
+        }, 300);
+    }
+
+    toggleImageZoom() {
+        const modalImage = document.getElementById('modalImage');
+        modalImage.classList.toggle('zoomed');
     }
 }
 

@@ -30,7 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Configuração do banco de dados
-const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
+const isProduction = false; // Forçar SQLite temporariamente até configurar MySQL no Railway
 
 let pool;
 let db; // SQLite database
@@ -263,7 +263,7 @@ app.get('/api/categorias', async (req, res) => {
   }
 });
 
-app.post('/api/categorias', checkPassword, async (req, res) => {
+app.post('/api/categorias', upload.none(), checkPasswordFormData, async (req, res) => {
   try {
     const { nome } = req.body;
     const [result] = await executeQuery('INSERT INTO categorias (nome) VALUES (?)', [nome]);
@@ -277,7 +277,7 @@ app.post('/api/categorias', checkPassword, async (req, res) => {
   }
 });
 
-app.put('/api/categorias/:id', checkPassword, async (req, res) => {
+app.put('/api/categorias/:id', upload.none(), checkPasswordFormData, async (req, res) => {
   try {
     const { id } = req.params;
     const { nome } = req.body;
@@ -316,7 +316,7 @@ app.get('/api/subcategorias/:categoriaId', async (req, res) => {
   }
 });
 
-app.post('/api/subcategorias', checkPassword, async (req, res) => {
+app.post('/api/subcategorias', upload.none(), checkPasswordFormData, async (req, res) => {
   try {
     const { nome, categoria_id } = req.body;
     const [result] = await executeQuery('INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)', [nome, categoria_id]);
@@ -330,7 +330,7 @@ app.post('/api/subcategorias', checkPassword, async (req, res) => {
   }
 });
 
-app.put('/api/subcategorias/:id', checkPassword, async (req, res) => {
+app.put('/api/subcategorias/:id', upload.none(), checkPasswordFormData, async (req, res) => {
   try {
     const { id } = req.params;
     const { nome } = req.body;
