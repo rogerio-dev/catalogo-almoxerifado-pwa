@@ -221,6 +221,17 @@ const upload = multer({
   }
 });
 
+// Middleware para verificar senha em FormData (após multer)
+const checkPasswordFormData = (req, res, next) => {
+  const { password } = req.body;
+  console.log('Senha recebida:', password); // Debug
+  console.log('Senha esperada:', process.env.ADMIN_PASSWORD); // Debug
+  if (password !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Senha incorreta' });
+  }
+  next();
+};
+
 // Middleware para verificar senha
 const checkPassword = (req, res, next) => {
   const { password } = req.body;
@@ -362,7 +373,7 @@ app.get('/api/itens/:subcategoriaId', async (req, res) => {
   }
 });
 
-app.post('/api/itens', checkPassword, upload.single('imagem'), async (req, res) => {
+app.post('/api/itens', upload.single('imagem'), checkPasswordFormData, async (req, res) => {
   try {
     const { nome, subcategoria_id } = req.body;
     const imagem = req.file ? `/uploads/${req.file.filename}` : null;
@@ -378,7 +389,7 @@ app.post('/api/itens', checkPassword, upload.single('imagem'), async (req, res) 
   }
 });
 
-app.put('/api/itens/:id', checkPassword, upload.single('imagem'), async (req, res) => {
+app.put('/api/itens/:id', upload.single('imagem'), checkPasswordFormData, async (req, res) => {
   try {
     const { id } = req.params;
     const { nome } = req.body;
