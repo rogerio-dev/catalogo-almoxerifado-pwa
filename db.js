@@ -111,35 +111,65 @@ async function connect() {
 
             // Create pool from URL but prefer resolving host to IPv4 to avoid IPv6 ECONNREFUSED
             const createPoolFromUrl = async (url) => {
-                try {
-                    // Parse URL into config so we can resolve hostname
-                    const parsedConfig = parseMysqlUrlToConfig(url);
+                // Parse URL into config so we can resolve hostname
+                const parsedConfig = parseMysqlUrlToConfig(url);
 
-                    // Try IPv4 resolution for the hostname
-                    try {
-                        const lookup = await dns.lookup(parsedConfig.host, { family: 4 });
-                        parsedConfig.host = lookup.address;
-                        console.log('Host resolvido para IPv4 (a partir da URL):', parsedConfig.host);
-                    } catch (dnsErr) {
-                        console.log('Não foi possível resolver IPv4 do host (a partir da URL), usando hostname original:', parsedConfig.host);
+                // Resolve all addresses (both v4 and v6) and try sequentially
+                try {
+                    const addresses = await dns.lookup(parsedConfig.host, { all: true });
+                    // Prioritize IPv4 addresses
+                    addresses.sort((a, b) => (a.family === 4 ? -1 : 1));
+                    console.log('Endereços resolvidos (priorizando IPv4):', addresses.map(a => `${a.address} (v${a.family})`));
+
+                    let lastErr;
+                    for (const addr of addresses) {
+                        const trialConfig = { ...parsedConfig, host: addr.address };
+                        console.log('Tentando criar pool com host:', trialConfig.host, 'port:', trialConfig.port);
+                        let trialPool;
+                        try {
+                            trialPool = mysql.createPool(trialConfig);
+                            // Test connection
+                            const conn = await trialPool.getConnection();
+                            await conn.execute('SELECT 1 as test');
+                            conn.release();
+                            console.log('✅ Conexão bem-sucedida com', trialConfig.host);
+                            return trialPool;
+                        } catch (trialErr) {
+                            lastErr = trialErr;
+                            console.log('❌ Falha ao conectar com', trialConfig.host, '-', trialErr.message);
+                            if (trialPool && typeof trialPool.end === 'function') {
+                                try { await trialPool.end(); } catch (_) {}
+                            }
+                            // continue to next address
+                        }
                     }
 
-                    console.log('Pool config a partir da URL (antes de criar pool):', {
-                        host: parsedConfig.host,
-                        port: parsedConfig.port,
-                        user: parsedConfig.user,
-                        database: parsedConfig.database
-                    });
-
-                    return mysql.createPool(parsedConfig);
-                } catch (e) {
-                    // If anything fails parsing/resolving, try passing the raw URL to mysql2 as a last resort
+                    // If none of the addresses worked, try raw URL as last resort
                     try {
                         console.log('Tentando criar pool diretamente a partir da string de conexão (última tentativa)');
-                        return mysql.createPool(url);
-                    } catch (innerErr) {
-                        console.error('Erro ao criar pool a partir da URL (direta):', innerErr.message);
-                        throw innerErr;
+                        const rawPool = mysql.createPool(url);
+                        const conn2 = await rawPool.getConnection();
+                        await conn2.execute('SELECT 1 as test');
+                        conn2.release();
+                        return rawPool;
+                    } catch (rawErr) {
+                        console.error('Erro ao criar pool a partir da URL (direta):', rawErr.message);
+                        throw lastErr || rawErr;
+                    }
+
+                } catch (dnsErr) {
+                    // DNS resolution failed, fall back to trying raw URL directly
+                    console.log('Falha ao resolver host para múltiplos endereços:', dnsErr.message);
+                    try {
+                        console.log('Tentando criar pool diretamente a partir da string de conexão (sem resolução)');
+                        const rawPool = mysql.createPool(url);
+                        const conn2 = await rawPool.getConnection();
+                        await conn2.execute('SELECT 1 as test');
+                        conn2.release();
+                        return rawPool;
+                    } catch (rawErr) {
+                        console.error('Erro ao criar pool a partir da URL (direta):', rawErr.message);
+                        throw rawErr;
                     }
                 }
             };
@@ -166,15 +196,43 @@ async function connect() {
                             reconnect: true,
                             ssl: false
                         };
-                        // try resolve IPv4
+
+                        // Resolve all addresses and try sequentially (prioritize IPv4)
                         try {
-                            const lookup = await dns.lookup(manual.host, { family: 4 });
-                            manual.host = lookup.address;
-                            console.log('Host resolvido para IPv4:', manual.host);
+                            const addresses = await dns.lookup(manual.host, { all: true });
+                            addresses.sort((a, b) => (a.family === 4 ? -1 : 1));
+                            console.log('Endereços resolvidos para MYSQLHOST:', addresses.map(a => `${a.address} (v${a.family})`));
+
+                            let manualPool;
+                            let lastErr;
+                            for (const addr of addresses) {
+                                const trial = { ...manual, host: addr.address };
+                                try {
+                                    manualPool = mysql.createPool(trial);
+                                    const conn = await manualPool.getConnection();
+                                    await conn.execute('SELECT 1 as test');
+                                    conn.release();
+                                    console.log('✅ Conexão bem-sucedida com host manual', trial.host);
+                                    pool = manualPool;
+                                    break;
+                                } catch (trialErr) {
+                                    lastErr = trialErr;
+                                    console.log('❌ Falha ao conectar com', trial.host, '-', trialErr.message);
+                                    if (manualPool && typeof manualPool.end === 'function') {
+                                        try { await manualPool.end(); } catch (_) {}
+                                    }
+                                }
+                            }
+
+                            if (!pool) {
+                                throw lastErr || new Error('Falha ao conectar com qualquer endereço de MYSQLHOST');
+                            }
+
                         } catch (dnsErr) {
-                            console.log('Não foi possível resolver IPv4 do host, usando valor original:', manual.host);
+                            console.log('Não foi possível resolver endereços para MYSQLHOST:', dnsErr.message);
+                            // try with original host string as last attempt
+                            pool = mysql.createPool(manual);
                         }
-                        pool = mysql.createPool(manual);
                     } else {
                         throw e;
                     }
@@ -183,14 +241,38 @@ async function connect() {
                 // config.type === 'config'
                 // Try to resolve hostname to IPv4 to avoid IPv6 ECONNREFUSED
                 try {
-                    const lookup = await dns.lookup(config.value.host, { family: 4 });
-                    config.value.host = lookup.address;
-                    console.log('Host resolvido para IPv4:', config.value.host);
+                    const addresses = await dns.lookup(config.value.host, { all: true });
+                    addresses.sort((a, b) => (a.family === 4 ? -1 : 1));
+                    console.log('Endereços resolvidos (config):', addresses.map(a => `${a.address} (v${a.family})`));
+
+                    let lastErr;
+                    for (const addr of addresses) {
+                        const trialConfig = { ...config.value, host: addr.address };
+                        try {
+                            const trialPool = mysql.createPool(trialConfig);
+                            const conn = await trialPool.getConnection();
+                            await conn.execute('SELECT 1 as test');
+                            conn.release();
+                            pool = trialPool;
+                            console.log('✅ Conexão bem-sucedida com', trialConfig.host);
+                            break;
+                        } catch (trialErr) {
+                            lastErr = trialErr;
+                            console.log('❌ Falha ao conectar com', addr.address, '-', trialErr.message);
+                            if (pool && typeof pool.end === 'function') {
+                                try { await pool.end(); } catch (_) {}
+                            }
+                        }
+                    }
+
+                    if (!pool) {
+                        throw lastErr || new Error('Falha ao conectar em todos os endereços resolvidos');
+                    }
                 } catch (dnsErr) {
                     console.log('Não foi possível resolver IPv4 do host, usando valor original:', config.value.host);
+                    pool = mysql.createPool(config.value);
                 }
 
-                pool = mysql.createPool(config.value);
             }
 
             // Testar a conexão
