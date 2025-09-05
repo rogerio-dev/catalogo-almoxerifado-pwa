@@ -31,13 +31,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Configuração do banco de dados
-const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQLHOST;
+const isProduction = process.env.NODE_ENV === 'production' || process.env.MYSQL_PUBLIC_URL;
 
 console.log('=== DETECÇÃO DE AMBIENTE ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('MYSQLHOST:', process.env.MYSQLHOST);
+console.log('MYSQL_PUBLIC_URL presente:', !!process.env.MYSQL_PUBLIC_URL);
 console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
-console.log('RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+console.log('MYSQLHOST:', process.env.MYSQLHOST);
 console.log('isProduction:', isProduction);
 console.log('=== FIM AMBIENTE ===');
 
@@ -45,54 +45,26 @@ let pool;
 let db; // SQLite database
 
 if (isProduction) {
-  // MySQL para produção - configuração otimizada
+  // MySQL para produção - USAR MYSQL_URL DIRETAMENTE
   console.log('=== CONFIGURAÇÃO MYSQL ===');
   console.log('MYSQL_URL presente:', !!process.env.MYSQL_URL);
+  console.log('MYSQL_PUBLIC_URL presente:', !!process.env.MYSQL_PUBLIC_URL);
   console.log('MYSQLHOST:', process.env.MYSQLHOST);
-  console.log('=== FIM CONFIG ===');
   
-  if (process.env.MYSQL_URL) {
-    // Usar URL completa do MySQL com configurações extras
-    const connectionOptions = {
-      ...require('url').parse(process.env.MYSQL_URL, true),
-      acquireTimeout: 60000,
-      timeout: 60000,
-      reconnect: true,
-      charset: 'utf8mb4',
-      timezone: '+00:00',
-      supportBigNumbers: true,
-      bigNumberStrings: true
-    };
+  // Usar MYSQL_URL que está completa e funcional
+  const mysqlUrl = process.env.MYSQL_URL;
+  
+  if (mysqlUrl) {
+    console.log('🐬 Usando MYSQL_URL interna (funcional)');
+    console.log('URL parcial:', mysqlUrl.substring(0, 30) + '...');
     
-    pool = mysql.createPool(process.env.MYSQL_URL + '?charset=utf8mb4&timezone=%2B00%3A00');
-    console.log('🐬 Conectando via MYSQL_URL com configurações extras');
+    // Criar pool diretamente com a URL
+    pool = mysql.createPool(mysqlUrl);
+    
+    console.log('✅ Pool MySQL criado diretamente com URL');
   } else {
-    // Fallback para configuração manual com IPv4 forçado
-    const dbConfig = {
-      host: process.env.MYSQLHOST,
-      port: parseInt(process.env.MYSQLPORT) || 3306,
-      user: process.env.MYSQLUSER,
-      password: process.env.MYSQLPASSWORD,
-      database: process.env.MYSQLDATABASE,
-      waitForConnections: true,
-      connectionLimit: 5,
-      queueLimit: 0,
-      acquireTimeout: 60000,
-      timeout: 60000,
-      reconnect: true,
-      charset: 'utf8mb4',
-      timezone: '+00:00',
-      family: 4 // Forçar IPv4
-    };
-    
-    console.log('Host:', dbConfig.host);
-    console.log('Port:', dbConfig.port);
-    console.log('User:', dbConfig.user);
-    console.log('Database:', dbConfig.database);
-    console.log('Password presente:', !!dbConfig.password);
-    
-    pool = mysql.createPool(dbConfig);
-    console.log('🐬 Conectando via configuração manual (IPv4)');
+    console.error('❌ MYSQL_URL não encontrada!');
+    process.exit(1);
   }
 } else {
   // SQLite para desenvolvimento
