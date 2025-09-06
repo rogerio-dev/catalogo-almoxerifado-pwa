@@ -293,7 +293,7 @@ class CatalogoApp {
             card.className = 'card item-card';
             
             const imageHtml = item.imagem 
-                ? `<img src="${item.imagem}" alt="${item.nome}" class="item-image">`
+                ? `<img src="${item.imagem}?t=${Date.now()}" alt="${item.nome}" class="item-image" onerror="this.parentElement.innerHTML='<div class=\\"item-image no-image\\"><i class=\\"fas fa-image-slash\\"></i></div>'">`
                 : `<div class="item-image no-image"><i class="fas fa-image"></i></div>`;
             
             card.innerHTML = `
@@ -380,7 +380,7 @@ class CatalogoApp {
         if (this.currentLevel === 'itens') {
             imageUploadSection.style.display = 'block';
             if (item && item.imagem) {
-                imagePreview.innerHTML = `<img src="${item.imagem}" alt="Preview">`;
+                imagePreview.innerHTML = `<img src="${item.imagem}?t=${Date.now()}" alt="Preview" onerror="this.style.display='none'">`;
             } else {
                 imagePreview.innerHTML = '';
             }
@@ -666,8 +666,8 @@ class CatalogoApp {
         modalImage.style.display = 'none';
         modalImage.classList.remove('zoomed');
 
-        // Load image
-        modalImage.src = item.imagem;
+        // Load image with cache busting
+        modalImage.src = `${item.imagem}?t=${Date.now()}`;
         modalImage.onload = () => {
             imageLoading.style.display = 'none';
             modalImage.style.display = 'block';

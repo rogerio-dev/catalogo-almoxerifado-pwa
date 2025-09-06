@@ -29,7 +29,19 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
+
+// Static files with cache control
+app.use(express.static('public', {
+  maxAge: '1d', // Cache static files for 1 day
+  setHeaders: (res, path) => {
+    // Don't cache uploaded images to avoid stale content
+    if (path.includes('/uploads/')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // Database initialization
 async function initializeDatabase() {
@@ -62,6 +74,12 @@ function setupFileUpload() {
   if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     console.log('📁 Upload directory created:', UPLOAD_DIR);
+  }
+
+  // Warning for Railway deployments
+  if (process.env.RAILWAY_ENVIRONMENT) {
+    console.log('⚠️  WARNING: Railway filesystems are ephemeral - uploaded files may be lost on redeploy');
+    console.log('💡 Consider using external storage (Cloudinary, AWS S3) for production');
   }
 
   const storage = multer.diskStorage({
