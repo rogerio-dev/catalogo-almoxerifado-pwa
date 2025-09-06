@@ -1,358 +1,126 @@
 const mysql = require('mysql2/promise');
-const dns = require('dns').promises;
 require('dotenv').config();
 
-// Helper: check non-empty env value and avoid unresolved template values
-const isFilled = (v) => typeof v === 'string' && v.trim() !== '' && !v.includes('${{');
+// Railway MySQL connection pool
+let pool = null;
 
-// Helper: validate a URL string contains a usable hostname
-const validateUrlHasHost = (raw) => {
-    try {
-        const parsed = new URL(raw);
-        return typeof parsed.hostname === 'string' && parsed.hostname.trim().length > 0 && parsed.hostname !== ':';
-    } catch (e) {
-        return false;
-    }
-};
-
-// Helper: parse a mysql:// URL into a mysql2 pool config object
-const parseMysqlUrlToConfig = (rawUrl) => {
-    const parsed = new URL(rawUrl);
-    const user = parsed.username || process.env.MYSQLUSER;
-    const password = parsed.password || process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD;
-    const host = parsed.hostname;
-    const port = parsed.port ? parseInt(parsed.port, 10) : 3306;
-    const database = (parsed.pathname || '').replace(/^\//, '') || process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE;
-
-    return {
-        host,
-        port,
-        user,
-        password,
-        database,
-        charset: 'utf8mb4',
-        connectionLimit: 10,
-        acquireTimeout: 60000,
-        reconnect: true,
-        ssl: false
-    };
-};
-
-// Verificar se estamos em produção
+// Check if we're in production (Railway)
 const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
 
-let pool;
-
-// Configuração MySQL baseada nas variáveis do Railway
-const getMySQLConfig = () => {
-    // Prefer the private MYSQL_URL (works inside Railway) when valid
-    if (isFilled(process.env.MYSQL_URL) && validateUrlHasHost(process.env.MYSQL_URL)) {
-        console.log('🔒 Usando MYSQL_URL (rede privada Railway)');
-        return {
-            type: 'url',
-            value: process.env.MYSQL_URL
-        };
+/**
+ * Create MySQL connection pool for Railway
+ * Railway automatically provides these environment variables when MySQL service is added:
+ * - MYSQL_URL: Complete connection string (preferred)
+ * - MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQL_ROOT_PASSWORD, MYSQLDATABASE: Individual vars
+ */
+function createPool() {
+    console.log('🔄 Creating MySQL connection pool for Railway...');
+    
+    // Method 1: Use MYSQL_URL if available (Railway's preferred method)
+    if (process.env.MYSQL_URL) {
+        console.log('✅ Using MYSQL_URL connection string');
+        return mysql.createPool({
+            uri: process.env.MYSQL_URL,
+            waitForConnections: true,
+            connectionLimit: 10,
+            queueLimit: 0,
+            acquireTimeout: 60000,
+            timeout: 60000,
+            reconnect: true
+        });
     }
-
-    // Use public TCP proxy URL only if it contains a real host
-    if (isFilled(process.env.MYSQL_PUBLIC_URL) && validateUrlHasHost(process.env.MYSQL_PUBLIC_URL)) {
-        console.log('🔒 Usando MYSQL_PUBLIC_URL (proxy público Railway)');
-        return {
-            type: 'public-url',
-            value: process.env.MYSQL_PUBLIC_URL
-        };
+    
+    // Method 2: Use individual environment variables
+    if (process.env.MYSQLHOST && process.env.MYSQLUSER && process.env.MYSQL_ROOT_PASSWORD) {
+        console.log('✅ Using individual MySQL environment variables');
+        return mysql.createPool({
+            host: process.env.MYSQLHOST,
+            port: process.env.MYSQLPORT || 3306,
+            user: process.env.MYSQLUSER,
+            password: process.env.MYSQL_ROOT_PASSWORD,
+            database: process.env.MYSQLDATABASE || 'railway',
+            waitForConnections: true,
+            connectionLimit: 10,
+            queueLimit: 0,
+            acquireTimeout: 60000,
+            timeout: 60000,
+            reconnect: true,
+            charset: 'utf8mb4'
+        });
     }
-
-    // Construir manualmente com variáveis individuais
-    const host = process.env.MYSQLHOST;
-    const port = process.env.MYSQLPORT || '3306';
-    const user = process.env.MYSQLUSER;
-    const password = process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD;
-    const database = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE;
-
-    if (host && user && password && database) {
-        console.log('🔧 Construindo configuração MySQL manual');
-        return {
-            type: 'config',
-            value: {
-                host: host,
-                port: parseInt(port, 10),
-                user: user,
-                password: password,
-                database: database,
-                charset: 'utf8mb4',
-                connectionLimit: 10,
-                acquireTimeout: 60000,
-                reconnect: true,
-                ssl: false
-            }
-        };
-    }
-
-    throw new Error('❌ Variáveis MySQL não encontradas ou incompletas!');
-};
-
-async function connect() {
-    try {
-        if (!pool) {
-            console.log('=== CONFIGURAÇÃO MYSQL RAILWAY ===');
-            console.log('🔄 Conectando ao MySQL...');
-
-            // Debug das variáveis
-            console.log('🔍 VARIÁVEIS DISPONÍVEIS:');
-            console.log('MYSQL_PUBLIC_URL:', process.env.MYSQL_PUBLIC_URL);
-            console.log('MYSQL_URL:', process.env.MYSQL_URL);
-            console.log('MYSQLHOST:', process.env.MYSQLHOST);
-            console.log('MYSQLPORT:', process.env.MYSQLPORT);
-            console.log('MYSQLUSER:', process.env.MYSQLUSER);
-            console.log('MYSQLDATABASE:', process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE);
-
-            const config = getMySQLConfig();
-
-            // Create pool from URL but prefer resolving host to IPv4 to avoid IPv6 ECONNREFUSED
-            const createPoolFromUrl = async (url) => {
-                // Parse URL into config so we can resolve hostname
-                const parsedConfig = parseMysqlUrlToConfig(url);
-
-                // Resolve all addresses (both v4 and v6) and try sequentially
-                try {
-                    const addresses = await dns.lookup(parsedConfig.host, { all: true });
-                    // Prioritize IPv4 addresses
-                    addresses.sort((a, b) => (a.family === 4 ? -1 : 1));
-                    console.log('Endereços resolvidos (priorizando IPv4):', addresses.map(a => `${a.address} (v${a.family})`));
-
-                    let lastErr;
-                    for (const addr of addresses) {
-                        const trialConfig = { ...parsedConfig, host: addr.address };
-                        console.log('Tentando criar pool com host:', trialConfig.host, 'port:', trialConfig.port);
-                        let trialPool;
-                        try {
-                            trialPool = mysql.createPool(trialConfig);
-                            // Test connection
-                            const conn = await trialPool.getConnection();
-                            await conn.execute('SELECT 1 as test');
-                            conn.release();
-                            console.log('✅ Conexão bem-sucedida com', trialConfig.host);
-                            return trialPool;
-                        } catch (trialErr) {
-                            lastErr = trialErr;
-                            console.log('❌ Falha ao conectar com', trialConfig.host, '-', trialErr.message);
-                            if (trialPool && typeof trialPool.end === 'function') {
-                                try { await trialPool.end(); } catch (_) {}
-                            }
-                            // continue to next address
-                        }
-                    }
-
-                    // If none of the addresses worked, try raw URL as last resort
-                    try {
-                        console.log('Tentando criar pool diretamente a partir da string de conexão (última tentativa)');
-                        const rawPool = mysql.createPool(url);
-                        const conn2 = await rawPool.getConnection();
-                        await conn2.execute('SELECT 1 as test');
-                        conn2.release();
-                        return rawPool;
-                    } catch (rawErr) {
-                        console.error('Erro ao criar pool a partir da URL (direta):', rawErr.message);
-                        throw lastErr || rawErr;
-                    }
-
-                } catch (dnsErr) {
-                    // DNS resolution failed, fall back to trying raw URL directly
-                    console.log('Falha ao resolver host para múltiplos endereços:', dnsErr.message);
-                    try {
-                        console.log('Tentando criar pool diretamente a partir da string de conexão (sem resolução)');
-                        const rawPool = mysql.createPool(url);
-                        const conn2 = await rawPool.getConnection();
-                        await conn2.execute('SELECT 1 as test');
-                        conn2.release();
-                        return rawPool;
-                    } catch (rawErr) {
-                        console.error('Erro ao criar pool a partir da URL (direta):', rawErr.message);
-                        throw rawErr;
-                    }
-                }
-            };
-
-            if (config.type === 'url' || config.type === 'public-url') {
-                console.log(config.type === 'public-url' ? 'Usando PUBLIC URL' : 'Usando PRIVATE URL');
-                try {
-                    pool = await createPoolFromUrl(config.value);
-                } catch (e) {
-                    console.error('Falha ao criar pool a partir da URL:', e.message);
-                    // fallthrough to try manual config if available
-                    if (isFilled(process.env.MYSQLHOST)) {
-                        console.log('Tentando usar configuração manual via MYSQLHOST como fallback');
-                        // build manual config
-                        const manual = {
-                            host: process.env.MYSQLHOST,
-                            port: parseInt(process.env.MYSQLPORT || '3306', 10),
-                            user: process.env.MYSQLUSER,
-                            password: process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD,
-                            database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE,
-                            charset: 'utf8mb4',
-                            connectionLimit: 10,
-                            acquireTimeout: 60000,
-                            reconnect: true,
-                            ssl: false
-                        };
-
-                        // Resolve all addresses and try sequentially (prioritize IPv4)
-                        try {
-                            const addresses = await dns.lookup(manual.host, { all: true });
-                            addresses.sort((a, b) => (a.family === 4 ? -1 : 1));
-                            console.log('Endereços resolvidos para MYSQLHOST:', addresses.map(a => `${a.address} (v${a.family})`));
-
-                            let manualPool;
-                            let lastErr;
-                            for (const addr of addresses) {
-                                const trial = { ...manual, host: addr.address };
-                                try {
-                                    manualPool = mysql.createPool(trial);
-                                    const conn = await manualPool.getConnection();
-                                    await conn.execute('SELECT 1 as test');
-                                    conn.release();
-                                    console.log('✅ Conexão bem-sucedida com host manual', trial.host);
-                                    pool = manualPool;
-                                    break;
-                                } catch (trialErr) {
-                                    lastErr = trialErr;
-                                    console.log('❌ Falha ao conectar com', trial.host, '-', trialErr.message);
-                                    if (manualPool && typeof manualPool.end === 'function') {
-                                        try { await manualPool.end(); } catch (_) {}
-                                    }
-                                }
-                            }
-
-                            if (!pool) {
-                                throw lastErr || new Error('Falha ao conectar com qualquer endereço de MYSQLHOST');
-                            }
-
-                        } catch (dnsErr) {
-                            console.log('Não foi possível resolver endereços para MYSQLHOST:', dnsErr.message);
-                            // try with original host string as last attempt
-                            pool = mysql.createPool(manual);
-                        }
-                    } else {
-                        throw e;
-                    }
-                }
-            } else {
-                // config.type === 'config'
-                // Try to resolve hostname to IPv4 to avoid IPv6 ECONNREFUSED
-                try {
-                    const addresses = await dns.lookup(config.value.host, { all: true });
-                    addresses.sort((a, b) => (a.family === 4 ? -1 : 1));
-                    console.log('Endereços resolvidos (config):', addresses.map(a => `${a.address} (v${a.family})`));
-
-                    let lastErr;
-                    for (const addr of addresses) {
-                        const trialConfig = { ...config.value, host: addr.address };
-                        try {
-                            const trialPool = mysql.createPool(trialConfig);
-                            const conn = await trialPool.getConnection();
-                            await conn.execute('SELECT 1 as test');
-                            conn.release();
-                            pool = trialPool;
-                            console.log('✅ Conexão bem-sucedida com', trialConfig.host);
-                            break;
-                        } catch (trialErr) {
-                            lastErr = trialErr;
-                            console.log('❌ Falha ao conectar com', addr.address, '-', trialErr.message);
-                            if (pool && typeof pool.end === 'function') {
-                                try { await pool.end(); } catch (_) {}
-                            }
-                        }
-                    }
-
-                    if (!pool) {
-                        throw lastErr || new Error('Falha ao conectar em todos os endereços resolvidos');
-                    }
-                } catch (dnsErr) {
-                    console.log('Não foi possível resolver IPv4 do host, usando valor original:', config.value.host);
-                    pool = mysql.createPool(config.value);
-                }
-
-            }
-
-            // Testar a conexão
-            console.log('🧪 Testando conexão MySQL...');
-            try {
-                const testConn = await pool.getConnection();
-                await testConn.execute('SELECT 1 as test');
-                testConn.release();
-                console.log('✅ Conexão MySQL estabelecida com sucesso!');
-            } catch (err) {
-                console.error('❌ Falha ao testar pool inicial:', err.message);
-
-                // Se tiver MYSQL_PUBLIC_URL disponível e ainda não tentamos como manual, tentar fallback
-                if ((err.code === 'ECONNREFUSED' || err.message.includes('ECONNREFUSED')) && process.env.MYSQL_PUBLIC_URL && validateUrlHasHost(process.env.MYSQL_PUBLIC_URL)) {
-                    console.log('🔁 Tentando fallback para MYSQL_PUBLIC_URL devido a ECONNREFUSED...');
-                    try {
-                        pool = await createPoolFromUrl(process.env.MYSQL_PUBLIC_URL);
-                        const testConn2 = await pool.getConnection();
-                        await testConn2.execute('SELECT 1 as test');
-                        testConn2.release();
-                        console.log('✅ Conexão via MYSQL_PUBLIC_URL estabelecida com sucesso!');
-                    } catch (err2) {
-                        console.error('❌ Fallback para MYSQL_PUBLIC_URL falhou:', err2.message);
-                        throw err2;
-                    }
-                } else {
-                    throw err;
-                }
-            }
-        }
-
-        return pool;
-    } catch (err) {
-        console.error('❌ Erro na conexão com o banco:', err.message);
-        throw err;
-    }
+    
+    throw new Error('❌ MySQL environment variables not found! Please ensure MySQL service is added to Railway project.');
 }
 
-// Função para testar a conexão
+/**
+ * Get or create database connection pool
+ */
+async function connect() {
+    if (!pool) {
+        try {
+            pool = createPool();
+            console.log('✅ MySQL pool created successfully');
+        } catch (error) {
+            console.error('❌ Failed to create MySQL pool:', error.message);
+            throw error;
+        }
+    }
+    return pool;
+}
+
+/**
+ * Test database connection
+ */
 async function testConnection() {
     try {
-        console.log('🧪 Testando conexão com MySQL...');
+        console.log('🧪 Testing MySQL connection...');
         const connection = await connect();
-        const [rows] = await connection.execute('SELECT NOW() as CurrentTime, 1 as test');
-        console.log('🎉 Teste de conexão MySQL bem-sucedido:', rows[0]);
+        const [rows] = await connection.execute('SELECT NOW() as current_time, 1 as test');
+        console.log('✅ MySQL connection test successful:', rows[0]);
         return true;
     } catch (err) {
-        console.error('❌ Teste de conexão falhou:', err.message);
+        console.error('❌ Connection test failed:', err.message);
         return false;
     }
 }
 
-// Função para executar queries (MySQL apenas)
+/**
+ * Execute database queries
+ */
 async function query(sql, params = []) {
     try {
         const connection = await connect();
         const [rows] = await connection.execute(sql, params);
 
-        // Para INSERT, UPDATE, DELETE - retornar informações de resultado
+        // For INSERT operations - return insert ID and affected rows
         if (sql.trim().toUpperCase().startsWith('INSERT')) {
             return { insertId: rows.insertId, affectedRows: rows.affectedRows };
-        } else if (sql.trim().toUpperCase().startsWith('UPDATE') || sql.trim().toUpperCase().startsWith('DELETE')) {
+        } 
+        
+        // For UPDATE/DELETE operations - return affected rows
+        if (sql.trim().toUpperCase().startsWith('UPDATE') || sql.trim().toUpperCase().startsWith('DELETE')) {
             return { affectedRows: rows.affectedRows };
         }
 
-        // Para SELECT - retornar as linhas
+        // For SELECT operations - return the rows
         return rows;
     } catch (err) {
-        console.error('❌ Erro ao executar query MySQL:', err.message);
+        console.error('❌ Database query error:', err.message);
+        console.error('SQL:', sql);
+        console.error('Params:', params);
         throw err;
     }
 }
 
-// Função para inicializar as tabelas MySQL
+/**
+ * Initialize database tables
+ */
 async function initializeTables() {
     try {
-        console.log('🔄 Inicializando tabelas MySQL...');
+        console.log('🔄 Initializing MySQL tables...');
 
-        // Tabelas MySQL
-        const mysqlTables = [
+        // Create tables for Railway MySQL
+        const tables = [
             `CREATE TABLE IF NOT EXISTS categorias (
               id INT AUTO_INCREMENT PRIMARY KEY,
               nome VARCHAR(255) NOT NULL UNIQUE,
@@ -382,26 +150,28 @@ async function initializeTables() {
             )`
         ];
 
-        for (const table of mysqlTables) {
+        for (const table of tables) {
             await query(table);
         }
-        console.log('✅ Tabelas MySQL criadas/verificadas com sucesso');
+        console.log('✅ MySQL tables created/verified successfully');
 
     } catch (error) {
-        console.error('❌ Erro ao inicializar tabelas MySQL:', error);
+        console.error('❌ Error initializing MySQL tables:', error);
         throw error;
     }
 }
 
-// Função para fechar conexão MySQL
+/**
+ * Close database connection
+ */
 async function closeConnection() {
     try {
         if (pool) {
             await pool.end();
-            console.log('✅ Pool MySQL fechado');
+            console.log('✅ MySQL pool closed');
         }
     } catch (err) {
-        console.error('❌ Erro ao fechar conexão MySQL:', err);
+        console.error('❌ Error closing MySQL connection:', err);
     }
 }
 
@@ -410,6 +180,5 @@ module.exports = {
     testConnection,
     query,
     initializeTables,
-    closeConnection,
-    isProduction
+    closeConnection
 };

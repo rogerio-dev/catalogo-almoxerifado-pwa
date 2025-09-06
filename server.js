@@ -5,7 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const fs = require('fs');
-const { connect, testConnection, query, initializeTables, closeConnection, isProduction } = require('./db');
+const { connect, testConnection, query, initializeTables, closeConnection } = require('./db');
 require('dotenv').config();
 
 const app = express();
@@ -43,21 +43,18 @@ async function initializeDatabase() {
     // Inicializar tabelas
     await initializeTables();
     
-    console.log('✅ Sistema de banco de dados inicializado com sucesso!');
-    console.log(`� Ambiente: ${isProduction ? 'Produção (MySQL)' : 'Desenvolvimento (SQLite)'}`);
+    console.log('✅ Database system initialized successfully!');
+    console.log('🚀 Environment: Production (Railway MySQL)');
     
   } catch (error) {
-    console.error('❌ ERRO AO INICIALIZAR BANCO DE DADOS:', error);
-    console.error('Detalhes do erro:', error.message);
+    console.error('❌ DATABASE INITIALIZATION ERROR:', error);
+    console.error('Error details:', error.message);
     
-    if (isProduction) {
-      console.log('🔄 Tentando novamente em 5 segundos...');
-      setTimeout(() => {
-        initializeDatabase();
-      }, 5000);
-    } else {
-      process.exit(1);
-    }
+    // In production, retry after 5 seconds
+    console.log('🔄 Retrying in 5 seconds...');
+    setTimeout(() => {
+      initializeDatabase();
+    }, 5000);
   }
 }
 
