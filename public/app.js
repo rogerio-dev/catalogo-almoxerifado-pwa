@@ -306,7 +306,7 @@ class CatalogoApp {
             card.className = 'card item-card';
             
             const imageHtml = item.imagem 
-                ? `<img src="${item.imagem}?t=${Date.now()}" alt="${item.nome}" class="item-image" onerror="this.parentElement.innerHTML='<div class=\\"item-image no-image\\"><i class=\\"fas fa-image-slash\\"></i></div>'">`
+                ? `<img src="${item.imagem}?t=${Date.now()}" alt="${item.nome}" class="item-image">`
                 : `<div class="item-image no-image"><i class="fas fa-image"></i></div>`;
             
             card.innerHTML = `
@@ -319,6 +319,12 @@ class CatalogoApp {
             // Add click event for image expansion (only if item has image)
             if (item.imagem) {
                 const img = card.querySelector('.item-image');
+                
+                // Add error handling for broken images
+                img.addEventListener('error', () => {
+                    img.parentElement.innerHTML = '<div class="item-image no-image"><i class="fas fa-image-slash"></i></div>';
+                });
+                
                 img.addEventListener('click', (e) => {
                     e.stopPropagation();
                     this.showImageModal(item);
