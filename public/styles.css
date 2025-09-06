@@ -77,6 +77,65 @@ body {
   transform: scale(1.05);
 }
 
+/* Items Timer */
+.items-timer {
+  position: absolute;
+  top: 50%;
+  right: 60px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: white;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.timer-content {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.timer-content i {
+  font-size: 0.9rem;
+}
+
+.items-timer.timer-alert {
+  background: rgba(255, 193, 7, 0.3);
+  border-color: rgba(255, 193, 7, 0.5);
+  color: #fff3cd;
+}
+
+.items-timer.timer-warning {
+  background: rgba(220, 53, 69, 0.3);
+  border-color: rgba(220, 53, 69, 0.5);
+  color: #f8d7da;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: translateY(-50%) scale(1); }
+  50% { transform: translateY(-50%) scale(1.05); }
+}
+
+/* Responsive timer */
+@media (max-width: 768px) {
+  .items-timer {
+    right: 50px;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+  }
+  
+  .timer-content i {
+    font-size: 0.8rem;
+  }
+}
+
 /* Main Content */
 #mainContent {
   min-height: calc(100vh - 72px);

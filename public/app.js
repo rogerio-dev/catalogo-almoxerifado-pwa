@@ -7,6 +7,11 @@ class CatalogoApp {
         this.editingItem = null;
         this.verifiedPassword = null; // Store verified password
         
+        // Timer properties for items screen
+        this.itemsTimer = null;
+        this.itemsTimerDisplay = null;
+        this.itemsTimeRemaining = 60; // 60 seconds = 1 minute
+        
         this.initializeApp();
     }
 
@@ -78,6 +83,11 @@ class CatalogoApp {
 
     // Navigation
     goBack() {
+        // Clear timer when leaving items screen
+        if (this.currentLevel === 'itens') {
+            this.clearItemsTimer();
+        }
+        
         if (this.currentLevel === 'itens') {
             this.currentLevel = 'subcategorias';
             this.currentSubcategoriaId = null;
@@ -152,6 +162,9 @@ class CatalogoApp {
             this.currentLevel = 'itens';
             this.renderItens(itens);
             this.updateHeader();
+            
+            // Start 1 minute timer for items screen
+            this.startItemsTimer();
         } catch (error) {
             this.showToast('Erro ao carregar itens', 'error');
         } finally {
@@ -642,6 +655,9 @@ class CatalogoApp {
 
     // Image Modal Methods
     showImageModal(item) {
+        // Pause timer when viewing image
+        this.pauseItemsTimer();
+        
         const modal = document.getElementById('imageModal');
         const modalImage = document.getElementById('modalImage');
         const modalItemName = document.getElementById('modalItemName');
@@ -700,7 +716,8 @@ class CatalogoApp {
             modalImage.src = '';
         }, 300);
         
-        // Navigate back to home (categorias)
+        // Clear timer and navigate back to home (categorias)
+        this.clearItemsTimer();
         this.currentLevel = 'categorias';
         this.currentCategoriaId = null;
         this.currentSubcategoriaId = null;
@@ -710,6 +727,116 @@ class CatalogoApp {
     toggleImageZoom() {
         const modalImage = document.getElementById('modalImage');
         modalImage.classList.toggle('zoomed');
+    }
+
+    // Timer functions for items screen
+    startItemsTimer() {
+        // Clear any existing timer
+        this.clearItemsTimer();
+        
+        // Reset timer
+        this.itemsTimeRemaining = 60; // 1 minute
+        
+        // Create timer display
+        this.createTimerDisplay();
+        
+        // Start countdown
+        this.itemsTimer = setInterval(() => {
+            this.itemsTimeRemaining--;
+            this.updateTimerDisplay();
+            
+            if (this.itemsTimeRemaining <= 0) {
+                this.clearItemsTimer();
+                this.goToHome();
+            }
+        }, 1000);
+    }
+    
+    clearItemsTimer() {
+        if (this.itemsTimer) {
+            clearInterval(this.itemsTimer);
+            this.itemsTimer = null;
+        }
+        this.removeTimerDisplay();
+    }
+    
+    pauseItemsTimer() {
+        if (this.itemsTimer) {
+            clearInterval(this.itemsTimer);
+            this.itemsTimer = null;
+        }
+        // Keep display but stop countdown
+    }
+    
+    resumeItemsTimer() {
+        if (this.currentLevel === 'itens' && !this.itemsTimer && this.itemsTimeRemaining > 0) {
+            this.itemsTimer = setInterval(() => {
+                this.itemsTimeRemaining--;
+                this.updateTimerDisplay();
+                
+                if (this.itemsTimeRemaining <= 0) {
+                    this.clearItemsTimer();
+                    this.goToHome();
+                }
+            }, 1000);
+        }
+    }
+    
+    createTimerDisplay() {
+        // Remove existing timer if any
+        this.removeTimerDisplay();
+        
+        // Create timer element
+        const timerElement = document.createElement('div');
+        timerElement.id = 'itemsTimer';
+        timerElement.className = 'items-timer';
+        timerElement.innerHTML = `
+            <div class="timer-content">
+                <i class="fas fa-clock"></i>
+                <span class="timer-text">1:00</span>
+            </div>
+        `;
+        
+        // Add to header
+        const header = document.getElementById('header');
+        header.appendChild(timerElement);
+        
+        this.itemsTimerDisplay = timerElement;
+    }
+    
+    removeTimerDisplay() {
+        if (this.itemsTimerDisplay) {
+            this.itemsTimerDisplay.remove();
+            this.itemsTimerDisplay = null;
+        }
+    }
+    
+    updateTimerDisplay() {
+        if (this.itemsTimerDisplay) {
+            const minutes = Math.floor(this.itemsTimeRemaining / 60);
+            const seconds = this.itemsTimeRemaining % 60;
+            const timeText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            const timerText = this.itemsTimerDisplay.querySelector('.timer-text');
+            timerText.textContent = timeText;
+            
+            // Change color as time runs out
+            if (this.itemsTimeRemaining <= 10) {
+                this.itemsTimerDisplay.classList.add('timer-warning');
+            } else if (this.itemsTimeRemaining <= 30) {
+                this.itemsTimerDisplay.classList.add('timer-alert');
+            }
+        }
+    }
+    
+    goToHome() {
+        // Clear timer and navigate to home
+        this.clearItemsTimer();
+        this.currentLevel = 'categorias';
+        this.currentCategoriaId = null;
+        this.currentSubcategoriaId = null;
+        this.loadCategorias();
+        this.showToast('Tempo esgotado - Voltando ao início', 'info');
     }
 }
 
