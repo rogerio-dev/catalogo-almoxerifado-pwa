@@ -1,55 +1,30 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-// Railway MySQL connection pool
 let pool = null;
 
-// Check if we're in production (Railway)
-const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
-
 /**
- * Create MySQL connection pool for Railway
- * Railway automatically provides these environment variables when MySQL service is added:
- * - MYSQL_URL: Complete connection string (preferred)
- * - MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQL_ROOT_PASSWORD, MYSQLDATABASE: Individual vars
+ * Create MySQL connection pool using .env variables
  */
 function createPool() {
-    console.log('🔄 Creating MySQL connection pool for Railway...');
+    const config = {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '3306'),
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'almoxerifado',
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        charset: 'utf8mb4'
+    };
+
+    console.log(`🔄 Creating MySQL connection pool...`);
+    console.log(`📍 Host: ${config.host}:${config.port}`);
+    console.log(`🗄️ Database: ${config.database}`);
+    console.log(`👤 User: ${config.user}`);
     
-    // Method 1: Use MYSQL_URL if available (Railway's preferred method)
-    if (process.env.MYSQL_URL) {
-        console.log('✅ Using MYSQL_URL connection string');
-        return mysql.createPool({
-            uri: process.env.MYSQL_URL,
-            waitForConnections: true,
-            connectionLimit: 10,
-            queueLimit: 0,
-            acquireTimeout: 60000,
-            timeout: 60000,
-            reconnect: true
-        });
-    }
-    
-    // Method 2: Use individual environment variables
-    if (process.env.MYSQLHOST && process.env.MYSQLUSER && process.env.MYSQL_ROOT_PASSWORD) {
-        console.log('✅ Using individual MySQL environment variables');
-        return mysql.createPool({
-            host: process.env.MYSQLHOST,
-            port: process.env.MYSQLPORT || 3306,
-            user: process.env.MYSQLUSER,
-            password: process.env.MYSQL_ROOT_PASSWORD,
-            database: process.env.MYSQLDATABASE || 'railway',
-            waitForConnections: true,
-            connectionLimit: 10,
-            queueLimit: 0,
-            acquireTimeout: 60000,
-            timeout: 60000,
-            reconnect: true,
-            charset: 'utf8mb4'
-        });
-    }
-    
-    throw new Error('❌ MySQL environment variables not found! Please ensure MySQL service is added to Railway project.');
+    return mysql.createPool(config);
 }
 
 /**
@@ -75,7 +50,7 @@ async function testConnection() {
     try {
         console.log('🧪 Testing MySQL connection...');
         const connection = await connect();
-        const [rows] = await connection.execute('SELECT NOW() as current_time, 1 as test');
+        const [rows] = await connection.execute('SELECT NOW() as test_time, 1 as test_value');
         console.log('✅ MySQL connection test successful:', rows[0]);
         return true;
     } catch (err) {
@@ -119,7 +94,6 @@ async function initializeTables() {
     try {
         console.log('🔄 Initializing MySQL tables...');
 
-        // Create tables for Railway MySQL
         const tables = [
             `CREATE TABLE IF NOT EXISTS categorias (
               id INT AUTO_INCREMENT PRIMARY KEY,

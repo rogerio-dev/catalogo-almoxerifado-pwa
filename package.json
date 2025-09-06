@@ -5,10 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "seed": "node seed.js",
-    "build": "echo 'Build complete'",
-    "deploy": "echo 'Deploy to Railway'"
+    "dev": "nodemon server.js"
   },
   "keywords": [
     "pwa",
@@ -25,8 +22,7 @@
     "express": "^4.18.2",
     "helmet": "^7.0.0",
     "multer": "^1.4.5-lts.1",
-    "mysql2": "^3.6.0",
-    "sqlite3": "^5.1.7"
+    "mysql2": "^3.6.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
