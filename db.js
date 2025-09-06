@@ -8,11 +8,11 @@ let pool = null;
  */
 function createPool() {
     const config = {
-        host: process.env.DB_HOST || 'localhost',
+        host: process.env.DB_HOST || 'mysql.railway.internal',
         port: parseInt(process.env.DB_PORT || '3306'),
         user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_NAME || 'almoxerifado',
+        password: process.env.DB_PASSWORD || 'TVHomrgsDyHvnhYLHshyfTvybLwGijnK',
+        database: process.env.DB_NAME || 'railway',
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
