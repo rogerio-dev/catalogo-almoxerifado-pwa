@@ -699,6 +699,12 @@ class CatalogoApp {
         setTimeout(() => {
             modalImage.src = '';
         }, 300);
+        
+        // Navigate back to home (categorias)
+        this.currentLevel = 'categorias';
+        this.currentCategoriaId = null;
+        this.currentSubcategoriaId = null;
+        this.loadCategorias();
     }
 
     toggleImageZoom() {
