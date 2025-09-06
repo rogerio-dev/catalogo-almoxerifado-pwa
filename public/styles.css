@@ -106,30 +106,31 @@ body {
 }
 
 .items-timer.timer-alert {
-  background: rgba(255, 193, 7, 0.3);
-  border-color: rgba(255, 193, 7, 0.5);
-  color: #fff3cd;
+  background: transparent;
+  border: none;
+  color: #ffd700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .items-timer.timer-warning {
-  background: rgba(220, 53, 69, 0.3);
-  border-color: rgba(220, 53, 69, 0.5);
-  color: #f8d7da;
+  background: transparent;
+  border: none;
+  color: #ff4444;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   animation: pulse 1s infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { transform: translateY(-50%) scale(1); }
-  50% { transform: translateY(-50%) scale(1.05); }
+  0%, 100% { transform: translateY(-50%) scale(1); opacity: 1; }
+  50% { transform: translateY(-50%) scale(1.1); opacity: 0.8; }
 }
 
 /* Responsive timer */
 @media (max-width: 768px) {
   .items-timer {
     right: 70px;
-    font-size: 0.7rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 15px;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.3rem;
   }
   
   .timer-content {
@@ -137,16 +138,15 @@ body {
   }
   
   .timer-content i {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
   }
 }
 
 @media (max-width: 480px) {
   .items-timer {
     right: 65px;
-    font-size: 0.65rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 12px;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.2rem;
   }
   
   .timer-content {
@@ -154,7 +154,7 @@ body {
   }
   
   .timer-content i {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
 }
 
@@ -165,9 +165,8 @@ body {
     top: 70px;
     right: 10px;
     transform: none;
-    font-size: 0.6rem;
-    padding: 0.15rem 0.3rem;
-    border-radius: 10px;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.2rem;
     z-index: 1000;
   }
   
@@ -176,7 +175,7 @@ body {
   }
   
   .timer-content i {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
   }
 }
 
