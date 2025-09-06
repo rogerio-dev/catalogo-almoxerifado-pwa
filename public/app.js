@@ -83,11 +83,6 @@ class CatalogoApp {
 
     // Navigation
     goBack() {
-        // Clear timer when leaving items screen
-        if (this.currentLevel === 'itens') {
-            this.clearItemsTimer();
-        }
-        
         if (this.currentLevel === 'itens') {
             this.currentLevel = 'subcategorias';
             this.currentSubcategoriaId = null;
@@ -163,8 +158,7 @@ class CatalogoApp {
             this.renderItens(itens);
             this.updateHeader();
             
-            // Start 1 minute timer for items screen
-            this.startItemsTimer();
+            // Timer will start when image modal is opened
         } catch (error) {
             this.showToast('Erro ao carregar itens', 'error');
         } finally {
@@ -661,9 +655,6 @@ class CatalogoApp {
 
     // Image Modal Methods
     showImageModal(item) {
-        // Pause timer when viewing image
-        this.pauseItemsTimer();
-        
         const modal = document.getElementById('imageModal');
         const modalImage = document.getElementById('modalImage');
         const modalItemName = document.getElementById('modalItemName');
@@ -682,6 +673,9 @@ class CatalogoApp {
             <span>${categoria}</span>
             <span>${subcategoria}</span>
         `;
+
+        // Start 1 minute timer when modal opens
+        this.startItemsTimer();
 
         // Show loading and hide image initially
         imageLoading.style.display = 'block';
@@ -722,12 +716,8 @@ class CatalogoApp {
             modalImage.src = '';
         }, 300);
         
-        // Clear timer and navigate back to home (categorias)
+        // Clear timer when modal closes
         this.clearItemsTimer();
-        this.currentLevel = 'categorias';
-        this.currentCategoriaId = null;
-        this.currentSubcategoriaId = null;
-        this.loadCategorias();
     }
 
     toggleImageZoom() {
@@ -795,7 +785,7 @@ class CatalogoApp {
         // Create timer element
         const timerElement = document.createElement('div');
         timerElement.id = 'itemsTimer';
-        timerElement.className = 'items-timer';
+        timerElement.className = 'items-timer-modal';
         timerElement.innerHTML = `
             <div class="timer-content">
                 <i class="fas fa-clock"></i>
@@ -803,11 +793,14 @@ class CatalogoApp {
             </div>
         `;
         
-        // Add to header
-        const header = document.getElementById('header');
-        header.appendChild(timerElement);
-        
-        this.itemsTimerDisplay = timerElement;
+        // Add to image modal header
+        const modalHeader = document.querySelector('#imageModal .modal-header');
+        if (modalHeader) {
+            modalHeader.appendChild(timerElement);
+            this.itemsTimerDisplay = timerElement;
+        } else {
+            console.error('Modal header not found');
+        }
     }
     
     removeTimerDisplay() {
@@ -836,8 +829,17 @@ class CatalogoApp {
     }
     
     goToHome() {
-        // Clear timer and navigate to home
+        // Clear timer and close modal if open
         this.clearItemsTimer();
+        
+        // Close image modal if it's open
+        const modal = document.getElementById('imageModal');
+        if (modal && modal.classList.contains('show')) {
+            modal.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+        
+        // Navigate to home
         this.currentLevel = 'categorias';
         this.currentCategoriaId = null;
         this.currentSubcategoriaId = null;

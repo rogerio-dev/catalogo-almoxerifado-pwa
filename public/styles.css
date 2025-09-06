@@ -77,7 +77,50 @@ body {
   transform: scale(1.05);
 }
 
-/* Items Timer */
+/* Items Timer in Modal */
+.items-timer-modal {
+  position: absolute;
+  top: 50%;
+  right: 50px;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  padding: 0.3rem 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.items-timer-modal .timer-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.items-timer-modal .timer-content i {
+  font-size: 1rem;
+}
+
+.items-timer-modal.timer-alert {
+  color: #ffd700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+.items-timer-modal.timer-warning {
+  color: #ff4444;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+  animation: pulseModal 1s infinite;
+}
+
+@keyframes pulseModal {
+  0%, 100% { transform: translateY(-50%) scale(1); opacity: 1; }
+  50% { transform: translateY(-50%) scale(1.15); opacity: 0.8; }
+}
+
+/* Items Timer (legacy - for header) */
 .items-timer {
   position: absolute;
   top: 50%;
