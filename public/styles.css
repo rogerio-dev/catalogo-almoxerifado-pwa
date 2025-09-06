@@ -126,13 +126,57 @@ body {
 /* Responsive timer */
 @media (max-width: 768px) {
   .items-timer {
-    right: 50px;
-    font-size: 0.75rem;
-    padding: 0.3rem 0.6rem;
+    right: 70px;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 15px;
+  }
+  
+  .timer-content {
+    gap: 0.3rem;
   }
   
   .timer-content i {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .items-timer {
+    right: 65px;
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 12px;
+  }
+  
+  .timer-content {
+    gap: 0.25rem;
+  }
+  
+  .timer-content i {
+    font-size: 0.7rem;
+  }
+}
+
+/* Para telas muito pequenas, mover timer para baixo do header */
+@media (max-width: 360px) {
+  .items-timer {
+    position: fixed;
+    top: 70px;
+    right: 10px;
+    transform: none;
+    font-size: 0.6rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 10px;
+    z-index: 1000;
+  }
+  
+  .timer-content {
+    gap: 0.2rem;
+  }
+  
+  .timer-content i {
+    font-size: 0.65rem;
   }
 }
 
