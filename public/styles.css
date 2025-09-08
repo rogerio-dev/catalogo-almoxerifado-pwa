@@ -293,11 +293,13 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  display: block;
   text-align: center;
+  width: 100%;
+}
+
+.card-title i {
+  margin-right: 0.5rem;
 }
 
 .card-subtitle {
