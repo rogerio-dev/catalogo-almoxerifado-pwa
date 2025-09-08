@@ -682,8 +682,8 @@ class CatalogoApp {
         modalImage.style.display = 'none';
         modalImage.classList.remove('zoomed');
 
-        // Load image with cache busting
-        modalImage.src = `${item.imagem}?t=${Date.now()}`;
+        // Load image
+        modalImage.src = item.imagem;
         modalImage.onload = () => {
             imageLoading.style.display = 'none';
             modalImage.style.display = 'block';

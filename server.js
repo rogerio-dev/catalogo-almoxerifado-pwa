@@ -6,12 +6,12 @@ const helmet = require('helmet');
 const compression = require('compression');
 const fs = require('fs');
 const { connect, testConnection, query, initializeTables, closeConnection } = require('./db');
+const { uploadImage, deleteImage, getOptimizedImageUrl } = require('./cloudinary');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-const UPLOAD_DIR = 'public/uploads/';
 
 // Security and performance middleware
 app.use(helmet({
@@ -20,7 +20,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
       connectSrc: ["'self'"]
     }
   }
@@ -30,17 +30,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static files with cache control
+// Static files for app assets only
 app.use(express.static('public', {
-  maxAge: '1d', // Cache static files for 1 day
-  setHeaders: (res, path) => {
-    // Don't cache uploaded images to avoid stale content
-    if (path.includes('/uploads/')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-  }
+  maxAge: '1d' // Cache static files for 1 day
 }));
 
 // Database initialization
@@ -69,26 +61,10 @@ async function initializeDatabase() {
   }
 }
 
-// File upload configuration
+// File upload configuration for Cloudinary
 function setupFileUpload() {
-  if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-    console.log('📁 Upload directory created:', UPLOAD_DIR);
-  }
-
-  // Warning for Railway deployments
-  if (process.env.RAILWAY_ENVIRONMENT) {
-    console.log('⚠️  WARNING: Railway filesystems are ephemeral - uploaded files may be lost on redeploy');
-    console.log('💡 Consider using external storage (Cloudinary, AWS S3) for production');
-  }
-
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-  });
+  // Using memory storage instead of disk storage for Cloudinary
+  const storage = multer.memoryStorage();
 
   return multer({
     storage,
@@ -97,11 +73,11 @@ function setupFileUpload() {
       const allowedTypes = /jpeg|jpg|png|gif|webp/;
       const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
       const mimetype = allowedTypes.test(file.mimetype);
-      
+
       if (mimetype && extname) {
         return cb(null, true);
       } else {
-        cb(new Error('Only images are allowed!'));
+        cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
       }
     }
   });
@@ -275,12 +251,19 @@ app.get('/api/itens/:subcategoriaId', async (req, res) => {
 app.post('/api/itens', upload.single('imagem'), handleMulterError, checkPasswordFormData, async (req, res) => {
   try {
     const { nome, subcategoria_id } = req.body;
-    const imagem = req.file ? `/uploads/${req.file.filename}` : null;
+    let imagemUrl = null;
     
-    const result = await query('INSERT INTO itens (nome, imagem, subcategoria_id) VALUES (?, ?, ?)', [nome, imagem, subcategoria_id]);
+    // Upload image to Cloudinary if provided
+    if (req.file) {
+      const uploadResult = await uploadImage(req.file.buffer, req.file.originalname);
+      imagemUrl = uploadResult.secure_url;
+    }
     
-    res.json({ id: result.insertId, nome, imagem, subcategoria_id });
+    const result = await query('INSERT INTO itens (nome, imagem, subcategoria_id) VALUES (?, ?, ?)', [nome, imagemUrl, subcategoria_id]);
+    
+    res.json({ id: result.insertId, nome, imagem: imagemUrl, subcategoria_id });
   } catch (error) {
+    console.error('Error creating item:', error);
     if (error.code === 'ER_DUP_ENTRY') {
       res.status(400).json({ error: 'Item already exists in this subcategory' });
     } else {
@@ -297,9 +280,26 @@ app.put('/api/itens/:id', upload.single('imagem'), checkPasswordFormData, async 
     let queryStr = 'UPDATE itens SET nome = ?';
     let params = [nome];
     
+    // Handle image update with Cloudinary
     if (req.file) {
+      // Get current item to delete old image if exists
+      const [currentItem] = await query('SELECT imagem FROM itens WHERE id = ?', [id]);
+      
+      // Upload new image to Cloudinary
+      const uploadResult = await uploadImage(req.file.buffer, req.file.originalname);
+      
       queryStr += ', imagem = ?';
-      params.push(`/uploads/${req.file.filename}`);
+      params.push(uploadResult.secure_url);
+      
+      // Delete old image from Cloudinary if it exists
+      if (currentItem && currentItem.imagem && currentItem.imagem.includes('cloudinary.com')) {
+        const publicId = currentItem.imagem.split('/').pop().split('.')[0];
+        try {
+          await deleteImage(`catalog-app/${publicId}`);
+        } catch (deleteError) {
+          console.warn('Could not delete old image from Cloudinary:', deleteError.message);
+        }
+      }
     }
     
     queryStr += ' WHERE id = ?';
@@ -308,6 +308,7 @@ app.put('/api/itens/:id', upload.single('imagem'), checkPasswordFormData, async 
     await query(queryStr, params);
     res.json({ success: true });
   } catch (error) {
+    console.error('Error updating item:', error);
     if (error.code === 'ER_DUP_ENTRY') {
       res.status(400).json({ error: 'Item already exists in this subcategory' });
     } else {
@@ -319,9 +320,26 @@ app.put('/api/itens/:id', upload.single('imagem'), checkPasswordFormData, async 
 app.delete('/api/itens/:id', checkPassword, async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Get item info before deletion to remove image from Cloudinary
+    const [item] = await query('SELECT imagem FROM itens WHERE id = ?', [id]);
+    
+    // Delete item from database
     await query('DELETE FROM itens WHERE id = ?', [id]);
+    
+    // Delete image from Cloudinary if it exists
+    if (item && item.imagem && item.imagem.includes('cloudinary.com')) {
+      const publicId = item.imagem.split('/').pop().split('.')[0];
+      try {
+        await deleteImage(`catalog-app/${publicId}`);
+      } catch (deleteError) {
+        console.warn('Could not delete image from Cloudinary:', deleteError.message);
+      }
+    }
+    
     res.json({ success: true });
   } catch (error) {
+    console.error('Error deleting item:', error);
     res.status(500).json({ error: 'Error deleting item' });
   }
 });
