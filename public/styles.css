@@ -291,12 +291,15 @@ body {
   margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  text-align: center;
 }
 
 .card-subtitle {
   color: var(--text-secondary);
   font-size: 0.9rem;
+  text-align: center;
 }
 
 .card-icon {
@@ -322,6 +325,10 @@ body {
 
 .item-info {
   flex: 1;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .no-image {
