@@ -5,7 +5,6 @@ class CatalogoApp {
         this.currentSubcategoriaId = null;
         this.currentData = [];
         this.editingItem = null;
-        this.verifiedPassword = null; // Store verified password
         
         // Timer properties for items screen
         this.itemsTimer = null;
@@ -21,22 +20,71 @@ class CatalogoApp {
         this.initializeApp();
     }
 
-    initializeApp() {
+    async initializeApp() {
+        // Check if user is authenticated
+        const isAuthenticated = await this.checkAuthentication();
+        if (!isAuthenticated) {
+            window.location.href = '/login.html';
+            return;
+        }
+        
         this.bindEvents();
         this.loadCategorias();
+    }
+
+    async checkAuthentication() {
+        try {
+            console.log('🔍 Checking authentication...');
+            const response = await fetch('/api/auth/check');
+            if (response.ok) {
+                const authData = await response.json();
+                console.log('✅ Auth response:', authData);
+                
+                // Show admin button if user is admin
+                if (authData.user && authData.user.is_admin) {
+                    console.log('👑 User is admin, looking for admin button...');
+                    const adminBtn = document.getElementById('adminBtn');
+                    if (adminBtn) {
+                        console.log('✅ Admin button found, showing it...');
+                        adminBtn.style.display = 'flex';
+                        console.log('✅ Admin button display set to flex');
+                    } else {
+                        console.error('❌ Admin button not found in DOM');
+                    }
+                } else {
+                    console.log('👤 User is not admin or auth data invalid');
+                }
+                return true;
+            } else {
+                console.log('❌ Auth check failed, status:', response.status);
+            }
+            return false;
+        } catch (error) {
+            console.error('❌ Authentication check failed:', error);
+            return false;
+        }
+    }
+
+    goToAdmin() {
+        window.location.href = '/admin';
     }
 
     bindEvents() {
         // Header buttons
         document.getElementById('backBtn').addEventListener('click', () => this.goBack());
-        document.getElementById('addBtn').addEventListener('click', () => this.showPasswordModal());
+        document.getElementById('addBtn').addEventListener('click', () => this.showAddEditModal());
 
-        // Password modal
-        document.getElementById('confirmPasswordBtn').addEventListener('click', () => this.verifyPassword());
-        document.getElementById('cancelPasswordBtn').addEventListener('click', () => this.hidePasswordModal());
-        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.verifyPassword();
-        });
+        // Add logout button if exists
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => this.logout());
+        }
+
+        // Add admin button if exists
+        const adminBtn = document.getElementById('adminBtn');
+        if (adminBtn) {
+            adminBtn.addEventListener('click', () => this.goToAdmin());
+        }
 
         // Add/Edit modal
         document.getElementById('cancelFormBtn').addEventListener('click', () => this.hideAddEditModal());
@@ -55,9 +103,6 @@ class CatalogoApp {
         document.getElementById('modalImage').addEventListener('click', () => this.toggleImageZoom());
 
         // Click outside modals
-        document.getElementById('passwordModal').addEventListener('click', (e) => {
-            if (e.target.id === 'passwordModal') this.hidePasswordModal();
-        });
         document.getElementById('addEditModal').addEventListener('click', (e) => {
             if (e.target.id === 'addEditModal') this.hideAddEditModal();
         });
@@ -73,18 +118,26 @@ class CatalogoApp {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 const imageModal = document.getElementById('imageModal');
-                const passwordModal = document.getElementById('passwordModal');
                 const addEditModal = document.getElementById('addEditModal');
                 
                 if (imageModal.classList.contains('show')) {
                     this.hideImageModal();
-                } else if (passwordModal.style.display === 'flex') {
-                    this.hidePasswordModal();
                 } else if (addEditModal.style.display === 'flex') {
                     this.hideAddEditModal();
                 }
             }
         });
+    }
+
+    async logout() {
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        } catch (error) {
+            console.error('Logout failed:', error);
+            // Force redirect even if logout API fails
+            window.location.href = '/login.html';
+        }
     }
 
     // Touch/Long Press handlers
@@ -188,12 +241,23 @@ class CatalogoApp {
         this.showLoading();
         try {
             const response = await fetch('/api/categorias');
+            
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('Failed to load categorias');
+            }
+            
             const categorias = await response.json();
             this.currentData = categorias;
             this.currentLevel = 'categorias';
             this.renderCategorias(categorias);
             this.updateHeader();
         } catch (error) {
+            console.error('Error loading categorias:', error);
             this.showToast('Erro ao carregar categorias', 'error');
         } finally {
             this.hideLoading();
@@ -204,6 +268,16 @@ class CatalogoApp {
         this.showLoading();
         try {
             const response = await fetch(`/api/subcategorias/${categoriaId}`);
+            
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('Failed to load subcategorias');
+            }
+            
             const subcategorias = await response.json();
             this.currentData = subcategorias;
             this.currentCategoriaId = categoriaId;
@@ -211,6 +285,7 @@ class CatalogoApp {
             this.renderSubcategorias(subcategorias);
             this.updateHeader();
         } catch (error) {
+            console.error('Error loading subcategorias:', error);
             this.showToast('Erro ao carregar subcategorias', 'error');
         } finally {
             this.hideLoading();
@@ -221,6 +296,16 @@ class CatalogoApp {
         this.showLoading();
         try {
             const response = await fetch(`/api/itens/${subcategoriaId}`);
+            
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error('Failed to load itens');
+            }
+            
             const itens = await response.json();
             this.currentData = itens;
             this.currentSubcategoriaId = subcategoriaId;
@@ -230,6 +315,7 @@ class CatalogoApp {
             
             // Timer will start when image modal is opened
         } catch (error) {
+            console.error('Error loading itens:', error);
             this.showToast('Erro ao carregar itens', 'error');
         } finally {
             this.hideLoading();
@@ -414,43 +500,6 @@ class CatalogoApp {
         content.appendChild(grid);
     }
 
-    // Password Modal
-    showPasswordModal() {
-        document.getElementById('passwordModal').style.display = 'block';
-        document.getElementById('passwordInput').focus();
-        document.getElementById('passwordError').textContent = '';
-    }
-
-    hidePasswordModal() {
-        document.getElementById('passwordModal').style.display = 'none';
-        document.getElementById('passwordInput').value = '';
-        document.getElementById('passwordError').textContent = '';
-    }
-
-    async verifyPassword() {
-        const password = document.getElementById('passwordInput').value;
-        
-        try {
-            const response = await fetch('/api/verify-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ password })
-            });
-
-            if (response.ok) {
-                this.verifiedPassword = password; // Store the verified password
-                this.hidePasswordModal();
-                this.showAddEditModal();
-            } else {
-                document.getElementById('passwordError').textContent = 'Senha incorreta';
-            }
-        } catch (error) {
-            document.getElementById('passwordError').textContent = 'Erro ao verificar senha';
-        }
-    }
-
     // Add/Edit Modal
     showAddEditModal(item = null) {
         this.editingItem = item;
@@ -522,7 +571,6 @@ class CatalogoApp {
         }
 
         formData.append('nome', nome);
-        formData.append('password', this.verifiedPassword); // Use the verified password
 
         if (this.currentLevel === 'categorias') {
             await this.saveCategoria(formData);
@@ -548,6 +596,11 @@ class CatalogoApp {
                 body: formData
             });
 
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+
             if (response.ok) {
                 this.hideAddEditModal();
                 this.showToast(this.editingItem ? 'Categoria atualizada!' : 'Categoria criada!', 'success');
@@ -557,6 +610,7 @@ class CatalogoApp {
                 document.getElementById('formError').textContent = error.error || 'Erro ao salvar categoria';
             }
         } catch (error) {
+            console.error('Error saving categoria:', error);
             document.getElementById('formError').textContent = 'Erro ao salvar categoria';
         }
     }
@@ -571,6 +625,11 @@ class CatalogoApp {
                 body: formData
             });
 
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+
             if (response.ok) {
                 this.hideAddEditModal();
                 this.showToast(this.editingItem ? 'Subcategoria atualizada!' : 'Subcategoria criada!', 'success');
@@ -580,6 +639,7 @@ class CatalogoApp {
                 document.getElementById('formError').textContent = error.error || 'Erro ao salvar subcategoria';
             }
         } catch (error) {
+            console.error('Error saving subcategoria:', error);
             document.getElementById('formError').textContent = 'Erro ao salvar subcategoria';
         }
     }
@@ -594,6 +654,11 @@ class CatalogoApp {
                 body: formData
             });
 
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+
             if (response.ok) {
                 this.hideAddEditModal();
                 this.showToast(this.editingItem ? 'Item atualizado!' : 'Item criado!', 'success');
@@ -603,6 +668,7 @@ class CatalogoApp {
                 document.getElementById('formError').textContent = error.error || 'Erro ao salvar item';
             }
         } catch (error) {
+            console.error('Error saving item:', error);
             document.getElementById('formError').textContent = 'Erro ao salvar item';
         }
     }
@@ -627,46 +693,11 @@ class CatalogoApp {
 
     editItem() {
         this.hideContextMenu();
-        this.showPasswordModal();
-        
-        // Override the password verification to show edit modal
-        const originalVerify = this.verifyPassword.bind(this);
-        this.verifyPassword = async () => {
-            const password = document.getElementById('passwordInput').value;
-            
-            try {
-                const response = await fetch('/api/verify-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ password })
-                });
-
-                if (response.ok) {
-                    this.verifiedPassword = password; // Store the verified password
-                    this.hidePasswordModal();
-                    this.showAddEditModal(this.contextMenuItem);
-                } else {
-                    document.getElementById('passwordError').textContent = 'Senha incorreta';
-                }
-            } catch (error) {
-                document.getElementById('passwordError').textContent = 'Erro ao verificar senha';
-            }
-            
-            // Restore original function
-            this.verifyPassword = originalVerify;
-        };
+        this.showAddEditModal(this.contextMenuItem);
     }
 
     async deleteItem() {
         if (!confirm('Tem certeza que deseja excluir este item?')) {
-            this.hideContextMenu();
-            return;
-        }
-
-        const password = prompt('Digite a senha para confirmar:');
-        if (!password) {
             this.hideContextMenu();
             return;
         }
@@ -685,9 +716,13 @@ class CatalogoApp {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ password })
+                }
             });
+
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
 
             if (response.ok) {
                 this.showToast('Item excluído com sucesso!', 'success');
@@ -701,9 +736,11 @@ class CatalogoApp {
                     this.loadItens(this.currentSubcategoriaId);
                 }
             } else {
-                this.showToast('Senha incorreta', 'error');
+                const error = await response.json();
+                this.showToast(error.error || 'Erro ao excluir item', 'error');
             }
         } catch (error) {
+            console.error('Error deleting item:', error);
             this.showToast('Erro ao excluir item', 'error');
         }
 
