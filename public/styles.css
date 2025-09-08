@@ -288,6 +288,23 @@ body {
   border-color: var(--primary-color);
 }
 
+/* Touch feedback */
+.card:active {
+  transform: scale(0.98);
+  transition: transform 0.1s ease;
+}
+
+/* Long press animation */
+@keyframes longPressAnimation {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(0.98); }
+}
+
+.card.long-press {
+  animation: longPressAnimation 0.5s ease-in-out;
+}
+
 .card-title { /* newVersion */
   font-size: 1.1rem;
   font-weight: 600;

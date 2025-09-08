@@ -12,6 +12,12 @@ class CatalogoApp {
         this.itemsTimerDisplay = null;
         this.itemsTimeRemaining = 60; // 60 seconds = 1 minute
         
+        // Touch/long press properties
+        this.touchTimer = null;
+        this.touchStartTime = 0;
+        this.longPressThreshold = 500; // 500ms for long press
+        this.touchTarget = null;
+        
         this.initializeApp();
     }
 
@@ -77,6 +83,70 @@ class CatalogoApp {
                 } else if (addEditModal.style.display === 'flex') {
                     this.hideAddEditModal();
                 }
+            }
+        });
+    }
+
+    // Touch/Long Press handlers
+    setupTouchEvents(element, item) {
+        // Touch start
+        element.addEventListener('touchstart', (e) => {
+            this.touchStartTime = Date.now();
+            this.touchTarget = item;
+            
+            // Add visual feedback
+            element.classList.add('long-press');
+            
+            // Start long press timer
+            this.touchTimer = setTimeout(() => {
+                // Trigger context menu on long press
+                e.preventDefault();
+                this.showContextMenu(e, item);
+                
+                // Add haptic feedback if available
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+                
+                // Remove visual feedback
+                element.classList.remove('long-press');
+            }, this.longPressThreshold);
+        });
+
+        // Touch end
+        element.addEventListener('touchend', (e) => {
+            // Remove visual feedback
+            element.classList.remove('long-press');
+            
+            // Clear long press timer
+            if (this.touchTimer) {
+                clearTimeout(this.touchTimer);
+                this.touchTimer = null;
+            }
+
+            // If it was a quick tap (not long press), handle normal click
+            const touchDuration = Date.now() - this.touchStartTime;
+            if (touchDuration < this.longPressThreshold) {
+                // This will be handled by the click event
+                return;
+            }
+        });
+
+        // Touch move (cancel long press if user moves finger)
+        element.addEventListener('touchmove', (e) => {
+            element.classList.remove('long-press');
+            if (this.touchTimer) {
+                clearTimeout(this.touchTimer);
+                this.touchTimer = null;
+            }
+        });
+
+        // Touch cancel
+        element.addEventListener('touchcancel', (e) => {
+            element.classList.remove('long-press');
+            if (this.touchTimer) {
+                clearTimeout(this.touchTimer);
+                this.touchTimer = null;
             }
         });
     }
@@ -197,6 +267,9 @@ class CatalogoApp {
             card.addEventListener('click', () => this.loadSubcategorias(categoria.id));
             card.addEventListener('contextmenu', (e) => this.showContextMenu(e, categoria));
             
+            // Add touch events for mobile devices
+            this.setupTouchEvents(card, categoria);
+            
             grid.appendChild(card);
         });
 
@@ -248,6 +321,9 @@ class CatalogoApp {
             
             card.addEventListener('click', () => this.loadItens(subcategoria.id));
             card.addEventListener('contextmenu', (e) => this.showContextMenu(e, subcategoria));
+            
+            // Add touch events for mobile devices
+            this.setupTouchEvents(card, subcategoria);
             
             grid.appendChild(card);
         });
@@ -326,6 +402,9 @@ class CatalogoApp {
             }
             
             card.addEventListener('contextmenu', (e) => this.showContextMenu(e, item));
+            
+            // Add touch events for mobile devices
+            this.setupTouchEvents(card, item);
             
             grid.appendChild(card);
         });
