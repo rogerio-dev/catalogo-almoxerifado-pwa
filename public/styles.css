@@ -288,7 +288,7 @@ body {
   border-color: var(--primary-color);
 }
 
-.card-title {
+.card-title { /* newVersion */
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-primary);
