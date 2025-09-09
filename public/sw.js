@@ -1,11 +1,10 @@
-const CACHE_NAME = 'catalogo-almoxerifado-v1';
+const CACHE_NAME = 'catalogo-almoxerifado-v2';
 const urlsToCache = [
   '/',
   '/styles.css',
   '/app.js',
   '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
+  '/icons/FAVICON.jpg',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
 ];
 
