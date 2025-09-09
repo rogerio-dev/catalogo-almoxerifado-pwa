@@ -34,9 +34,9 @@
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
 
     <!-- Anti-cache meta tags -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <!-- <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
+    <meta http-equiv="Expires" content="0"> -->
 
 </head>
 <body>
@@ -160,18 +160,40 @@
     <!-- Scripts -->
     <script src="/app.js"></script>
     <script>
-        // Register Service Worker
+        // Register Service Worker with better debugging
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
                     .then(registration => {
-                        console.log('SW registered: ', registration);
+                        console.log('✅ SW registered successfully: ', registration);
                     })
                     .catch(registrationError => {
-                        console.log('SW registration failed: ', registrationError);
+                        console.error('❌ SW registration failed: ', registrationError);
                     });
             });
         }
+
+        // Check PWA installability
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('🎯 PWA is installable!');
+            e.preventDefault();
+            deferredPrompt = e;
+        });
+
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('🎉 PWA was installed successfully!');
+        });
+
+        // Debug manifest
+        fetch('/manifest.json')
+            .then(response => response.json())
+            .then(manifest => {
+                console.log('📱 Manifest loaded:', manifest);
+            })
+            .catch(error => {
+                console.error('❌ Manifest failed to load:', error);
+            });
     </script>
 </body>
 </html>
