@@ -1,74 +1,51 @@
-const CACHE_NAME = 'catalogo-almoxerifado-v2';
+const CACHE_NAME = 'catalogo-almoxerifado-v3';
 const urlsToCache = [
   '/',
   '/styles.css',
   '/app.js',
-  '/manifest.json',
-  '/icons/FAVICON.jpg',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
+  '/icons/FAVICON.jpg'
 ];
 
 // Install event
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-  );
-});
-
-// Fetch event
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Return cached version or fetch from network
-        if (response) {
-          return response;
-        }
-        
-        // Clone the request because it's a stream
-        const fetchRequest = event.request.clone();
-        
-        return fetch(fetchRequest).then(response => {
-          // Check if we received a valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-          
-          // Clone the response because it's a stream
-          const responseToCache = response.clone();
-          
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
-          
-          return response;
-        }).catch(() => {
-          // Return offline page for navigation requests
-          if (event.request.destination === 'document') {
-            return caches.match('/');
-          }
-        });
-      })
-  );
+  console.log('SW: Installing v3...');
+  self.skipWaiting(); // Force immediate activation
 });
 
 // Activate event
 self.addEventListener('activate', event => {
+  console.log('SW: Activating v3...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
+          console.log('SW: Deleting old cache:', cacheName);
+          return caches.delete(cacheName);
         })
       );
+    }).then(() => {
+      return self.clients.claim();
+    })
+  );
+});
+
+// Fetch event - MINIMAL INTERVENTION
+self.addEventListener('fetch', event => {
+  // Don't intercept manifest.json or sw.js
+  if (event.request.url.includes('manifest.json') || 
+      event.request.url.includes('sw.js')) {
+    console.log('SW: Skipping interception for:', event.request.url);
+    return;
+  }
+
+  // Only cache GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      return caches.match(event.request);
     })
   );
 });

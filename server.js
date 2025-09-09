@@ -14,20 +14,22 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-// Security and performance middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://maxcdn.bootstrapcdn.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      scriptSrcAttr: ["'unsafe-inline'"],
-      fontSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://maxcdn.bootstrapcdn.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https:"],
-      connectSrc: ["'self'"]
-    }
-  }
-}));
+// Security and performance middleware - TEMPORARILY DISABLED FOR PWA TESTING
+// app.use(helmet({
+//   contentSecurityPolicy: {
+//     directives: {
+//       defaultSrc: ["'self'"],
+//       styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://maxcdn.bootstrapcdn.com"],
+//       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+//       scriptSrcAttr: ["'unsafe-inline'"],
+//       fontSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://maxcdn.bootstrapcdn.com"],
+//       imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https:"],
+//       connectSrc: ["'self'", "https://cdnjs.cloudflare.com"],
+//       manifestSrc: ["'self'"],
+//       workerSrc: ["'self'"]
+//     }
+//   }
+// }));
 app.use(compression());
 app.use(cors());
 app.use(express.json());
@@ -47,8 +49,19 @@ app.use(session({
 
 // Static files for app assets only
 app.use(express.static('public', {
-  maxAge: '1d' // Cache static files for 1 day
+  maxAge: '1d', // Cache static files for 1 day
+  setHeaders: (res, path) => {
+    if (path.endsWith('.json')) {
+      res.setHeader('Content-Type', 'application/json');
+    }
+  }
 }));
+
+// Manifest route with correct Content-Type
+app.get('/manifest.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
+});
 
 // Database initialization
 async function initializeDatabase() {
