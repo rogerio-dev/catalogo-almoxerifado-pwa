@@ -223,7 +223,7 @@ class CatalogoApp {
 
         if (this.currentLevel === 'categorias') {
             backBtn.style.display = 'none';
-            headerTitle.textContent = 'Catálogo Almoxerifado';
+            headerTitle.textContent = 'Menu';
         } else {
             backBtn.style.display = 'flex';
             if (this.currentLevel === 'subcategorias') {
